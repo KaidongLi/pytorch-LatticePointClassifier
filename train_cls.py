@@ -48,6 +48,10 @@ def test(model, loader, num_class=40):
         pred, _ = classifier(points)
         pred_choice = pred.data.max(1)[1]
         for cat in np.unique(target.cpu()):
+
+            # kaidong mod: resolve tensor cannot be (target==cat) eq() to a numpy bug
+            cat = cat.item()
+
             classacc = pred_choice[target==cat].eq(target[target==cat].long().data).cpu().sum()
             class_acc[cat,0]+= classacc.item()/float(points[target==cat].size()[0])
             class_acc[cat,1]+=1
