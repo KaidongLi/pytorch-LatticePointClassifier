@@ -16,9 +16,20 @@ import provider
 import importlib
 import shutil
 
+# from utils import get_cifar_training, get_cifar_test
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, 'models'))
+
+# SCALE_LOW = 2
+# SCALE_UP  = 2
+
+SCALE_LOW = 30
+SCALE_UP  = 32
+
+# SCALE_LOW = 150
+# SCALE_UP  = 192
 
 
 def parse_args():
@@ -67,6 +78,9 @@ def main(args):
     def log_string(str):
         logger.info(str)
         print(str)
+    def log_only_string(str):
+        logger.info(str)
+        # print(str)
 
     '''HYPER PARAMETER'''
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
@@ -110,14 +124,30 @@ def main(args):
     trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=args.batch_size, shuffle=True, num_workers=4)
     testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
+
+    # trainDataLoader = get_cifar_training(
+    #     (0.5070751592371323, 0.48654887331495095, 0.4409178433670343),
+    #     (0.2673342858792401, 0.2564384629170883, 0.27615047132568404),
+    #     num_workers=4, batch_size=args.batch_size, shuffle=True
+    # )
+
+    # testDataLoader = get_cifar_test(
+    #     (0.5070751592371323, 0.48654887331495095, 0.4409178433670343),
+    #     (0.2673342858792401, 0.2564384629170883, 0.27615047132568404),
+    #     num_workers=4, batch_size=args.batch_size, shuffle=False
+    # )
+
     '''MODEL LOADING'''
     num_class = 40
+    # num_class = 100
     MODEL = importlib.import_module(args.model)
     shutil.copy('./models/%s.py' % args.model, str(experiment_dir))
     shutil.copy('./models/pointnet_util.py', str(experiment_dir))
 
     classifier = MODEL.get_model(num_class,normal_channel=args.normal).cuda()
-    criterion = MODEL.get_loss().cuda()
+    
+    criterion = torch.nn.CrossEntropyLoss()
+    # criterion = MODEL.get_loss().cuda()
 
     try:
         checkpoint = torch.load(str(experiment_dir) + '/checkpoints/best_model.pth')
@@ -152,23 +182,69 @@ def main(args):
     for epoch in range(start_epoch,args.epoch):
         log_string('Epoch %d (%d/%s):' % (global_epoch + 1, epoch + 1, args.epoch))
 
+        # kaidong debug test
+        # with torch.no_grad():
+        #     instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class)
+
+        #     if (instance_acc >= best_instance_acc):
+        #         best_instance_acc = instance_acc
+        #         best_epoch = epoch + 1
+
+        #     if (class_acc >= best_class_acc):
+        #         best_class_acc = class_acc
+        #     log_string('Test Instance Accuracy: %f, Class Accuracy: %f'% (instance_acc, class_acc))
+        #     log_string('Best Instance Accuracy: %f, Class Accuracy: %f'% (best_instance_acc, best_class_acc))
+
         scheduler.step()
-        for batch_id, data in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9):
+        pbar = tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9)
+        # for batch_id, data in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9):
+        for batch_id, data in pbar:
             points, target = data
             points = points.data.numpy()
             points = provider.random_point_dropout(points)
-            points[:,:, 0:3] = provider.random_scale_point_cloud(points[:,:, 0:3])
+            points[:,:, 0:3] = provider.random_scale_point_cloud(points[:,:, 0:3], 0.8, 1.)
+            # if points.max() >= SCALE_UP or points.min() <= -SCALE_UP:
+            #     print('...')
+
+            #     # kaidong test
+            #     import pdb; pdb.set_trace()
+
             points[:,:, 0:3] = provider.shift_point_cloud(points[:,:, 0:3])
             points = torch.Tensor(points)
             target = target[:, 0]
 
             points = points.transpose(2, 1)
+
+
             points, target = points.cuda(), target.cuda()
             optimizer.zero_grad()
 
             classifier = classifier.train()
-            pred, trans_feat = classifier(points)
-            loss = criterion(pred, target.long(), trans_feat)
+
+            pred, _ = classifier(points)
+            loss = criterion(pred, target.long())
+
+            if global_step % 10 == 0:
+                log_only_string("Loss: %f" % loss)
+                pbar.set_description("Loss: %f" % loss)
+
+            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_ori'),
+            #     # points.permute(0, 2, 3, 1).cpu().data.numpy()
+            #     points.cpu().data.numpy()
+            # )
+            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_lat'),
+            #     _.permute(0, 2, 3, 1).cpu().data.numpy()
+            # )
+
+
+
+            # kaidong test
+            # import pdb; pdb.set_trace()
+            
+
+
+            # pred, trans_feat = classifier(points)
+            # loss = criterion(pred, target.long(), trans_feat)
             pred_choice = pred.data.max(1)[1]
             correct = pred_choice.eq(target.long().data).cpu().sum()
             mean_correct.append(correct.item() / float(points.size()[0]))
@@ -176,12 +252,17 @@ def main(args):
             optimizer.step()
             global_step += 1
 
+            # kaidong test
+            # if global_step > 5:
+            #     global_step = 0
+            #     break
+
         train_instance_acc = np.mean(mean_correct)
         log_string('Train Instance Accuracy: %f' % train_instance_acc)
 
 
         with torch.no_grad():
-            instance_acc, class_acc = test(classifier.eval(), testDataLoader)
+            instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class)
 
             if (instance_acc >= best_instance_acc):
                 best_instance_acc = instance_acc
