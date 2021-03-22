@@ -144,7 +144,7 @@ def main(args):
     shutil.copy('./models/%s.py' % args.model, str(experiment_dir))
     shutil.copy('./models/pointnet_util.py', str(experiment_dir))
 
-    classifier = MODEL.get_model(num_class,normal_channel=args.normal).cuda()
+    classifier = MODEL.get_model(num_class, args.num_point, normal_channel=args.normal).cuda()
     
     criterion = torch.nn.CrossEntropyLoss()
     # criterion = MODEL.get_loss().cuda()

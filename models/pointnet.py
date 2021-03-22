@@ -110,6 +110,11 @@ class PointNetEncoder(nn.Module):
         if D > 3:
             x = torch.cat([x,feature],dim=2)
         x = x.transpose(2, 1)
+
+
+        import pdb; pdb.set_trace()
+
+        
         x = F.relu(self.bn1(self.conv1(x)))
 
         if self.feature_transform:
