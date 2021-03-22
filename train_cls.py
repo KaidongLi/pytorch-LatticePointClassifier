@@ -121,7 +121,7 @@ def main(args):
                                                      normal_channel=args.normal)
     TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
                                                     normal_channel=args.normal)
-    trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=args.batch_size, shuffle=True, num_workers=4)
+    trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
     testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
 
@@ -228,18 +228,24 @@ def main(args):
                 log_only_string("Loss: %f" % loss)
                 pbar.set_description("Loss: %f" % loss)
 
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_ori'),
-            #     # points.permute(0, 2, 3, 1).cpu().data.numpy()
-            #     points.cpu().data.numpy()
-            # )
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_lat'),
-            #     _.permute(0, 2, 3, 1).cpu().data.numpy()
-            # )
+            np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_ori'),
+                # points.permute(0, 2, 3, 1).cpu().data.numpy()
+                points.cpu().data.numpy()
+            )
+            np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_3dlat'),
+                _[2].cpu().data.numpy()
+            )
+            np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_lat'),
+                _[1].permute(0, 2, 3, 1).cpu().data.numpy()
+            )
+            np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_sparse_lat'),
+                _[0].permute(0, 2, 3, 1).cpu().data.numpy()
+            )
 
 
 
             # kaidong test
-            # import pdb; pdb.set_trace()
+            import pdb; pdb.set_trace()
             
 
 

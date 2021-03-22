@@ -84,7 +84,7 @@ class get_model(nn.Module):
         splatted_2d = splatted_2d.permute(0, 3, 1, 2).contiguous()
         outputs = self.network_2d(splatted_2d)
 
-        return outputs, _.permute(0, 3, 1, 2)
+        return outputs, [_[0].permute(0, 3, 1, 2), splatted_2d, _[1]]
 
 
 
@@ -256,7 +256,7 @@ class LatticeGenVariableTrans(nn.Module):
             filter_2d[i] = splatted_2d[i, pts_pick[i, 0]::self.d1, pts_pick[i, 1]::self.d1][:self.size2d//self.d1, :self.size2d//self.d1]
 
         # return splatted_2d, filter_2d
-        return filter_2d, filter_2d
+        return filter_2d, [splatted_2d, keys.view(batch_size, 3, -1)]
 
     # def __repr__(self):
     #     format_string = self.__class__.__name__ + '\n(scales_filter_map: {}\n'.format(self.scales_filter_map)
