@@ -228,18 +228,24 @@ def main(args):
                 log_only_string("Loss: %f" % loss)
                 pbar.set_description("Loss: %f" % loss)
 
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_ori'),
-            #     # points.permute(0, 2, 3, 1).cpu().data.numpy()
-            #     points.cpu().data.numpy()
-            # )
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_lat'),
-            #     _.permute(0, 2, 3, 1).cpu().data.numpy()
-            # )
+            np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_ori'),
+                # points.permute(0, 2, 3, 1).cpu().data.numpy()
+                points.cpu().data.numpy()
+            )
+            np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_3dlat'),
+                _[2].cpu().data.numpy()
+            )
+            np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_lat'),
+                _[1].permute(0, 2, 3, 1).cpu().data.numpy()
+            )
+            np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_sparse_lat'),
+                _[0].permute(0, 2, 3, 1).cpu().data.numpy()
+            )
 
 
 
             # kaidong test
-            # import pdb; pdb.set_trace()
+            import pdb; pdb.set_trace()
             
 
 
