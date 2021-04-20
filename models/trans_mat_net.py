@@ -21,6 +21,9 @@ class STN3dMod(nn.Module):
         self.bn4 = nn.BatchNorm1d(512)
         self.bn5 = nn.BatchNorm1d(256)
 
+        iden = Variable(torch.from_numpy(np.array([2, -1, -1, -1, 2, -1, -1, -1, 2]).astype(np.float32) / np.sqrt(6))).view(1, 9)
+        self.init_mat = iden.cuda()
+
     def forward(self, x):
         batchsize = x.size()[0]
         x = F.relu(self.bn1(self.conv1(x)))
@@ -33,19 +36,23 @@ class STN3dMod(nn.Module):
         x = F.relu(self.bn5(self.fc2(x)))
         x = self.fc3(x)
 
-        iden = Variable(torch.from_numpy(np.array([2, -1, -1, -1, 2, -1, -1, -1, 2]).astype(np.float32))).view(1, 9).repeat(
-            batchsize, 1)
-        if x.is_cuda:
-            iden = iden.cuda()
+        # iden = Variable(torch.from_numpy(np.array([2, -1, -1, -1, 2, -1, -1, -1, 2]).astype(np.float32)) / torch.tensor(6.).sqrt() ).view(1, 9).repeat(
+        #     batchsize, 1)
+        # if x.is_cuda:
+        #     iden = iden.cuda()
         # x = x + iden
         # x = x.view(-1, 3, 3)
 
-        iden = iden.view(-1, 3, 3)
+        output = self.init_mat.repeat(batchsize, 1).view(-1, 3, 3).detach()
+
+        # import pdb; pdb.set_trace()
+
         x = x.view(-1, 2, 3)
 
-        iden[:, :-1, :] +=  x
-        iden[:, -1, :] -= x.sum(dim=1)
-        return iden
+        output[:, :-1, :] +=  x
+        output[:, -1, :] -= x.sum(dim=1)
+
+        return output
 
 
 class TransMatNet(nn.Module):
