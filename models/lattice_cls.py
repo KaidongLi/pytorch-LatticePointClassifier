@@ -74,11 +74,14 @@ class get_model(nn.Module):
 
     def forward(self, x):
         # d = 2
-        splatted_2d, _ = self.lat_transform(x[:, :3] * (self.size2d//2 - 2), x[:, 3:])
+        # returned splatted has a shape of [b, size, size, c]
+        splatted_2d, splatted_2d_2, _ = self.lat_transform(x[:, :3] * (self.size2d//2 - 2), x[:, 3:])
+        # splatted_2d = torch.cat((splatted_2d, splatted_2d_2), 3).permute(0, 3, 1, 2).contiguous()
         splatted_2d = splatted_2d.permute(0, 3, 1, 2).contiguous()
 
         # splatted_2d = x
 
+        # network takes [b, c, size, size]
         outputs = self.network_2d(splatted_2d)
 
 
@@ -88,7 +91,7 @@ class get_model(nn.Module):
 
 
 
-        return outputs, [_[0].permute(0, 3, 1, 2), splatted_2d, _[1]]
+        return outputs, None#[_[0].permute(0, 3, 1, 2), splatted_2d, _[1]]
 
 
 
@@ -137,7 +140,7 @@ class LatticeGen(nn.Module):
 
 
         self.elevate_mat = (torch.FloatTensor([[2, -1, -1], [-1, 2, -1], [-1, -1, 2]]) / torch.tensor(6.).sqrt() ).cuda()
-
+        # self.elevate_mat2 = F.normalize(torch.FloatTensor([[8, -7, -1], [-1, -1, 2], [-7, 8, -1]]), dim=0).cuda()
 
 
         # kaidong: transfer to 2d
@@ -165,7 +168,7 @@ class LatticeGen(nn.Module):
         #     traversal.go(center, hash_table)
         #     self.radius2offset[radius] = np.vstack(hash_table)
 
-    def get_keys_and_barycentric(self, pc):
+    def get_keys_and_barycentric(self, pc, is_2nd_trans=False):
         """
         :param pc: (self.d, N -- undefined)
         :return:
@@ -175,8 +178,11 @@ class LatticeGen(nn.Module):
         point_indices = torch.arange(num_points, dtype=torch.long)[None, None, :]
         batch_indices = torch.arange(batch_size, dtype=torch.long)[:, None, None]
 
-        # elevated = torch.matmul(self.elevate_mat, pc) * self.expected_std  # (d+1, N)
-        elevated = torch.matmul(self.elevate_mat, pc) # * self.expected_std  # (d+1, N)
+        if is_2nd_trans:
+        	elevated = torch.matmul(self.elevate_mat2, pc)
+        else:
+        	# elevated = torch.matmul(self.elevate_mat, pc) * self.expected_std  # (d+1, N)
+        	elevated = torch.matmul(self.elevate_mat, pc) # * self.expected_std  # (d+1, N)
 
         # kaidong: to 2d
         # elevated = elevated[:, :self.d1, :] # * self.expected_std  # (d+1, N)
@@ -246,35 +252,71 @@ class LatticeGen(nn.Module):
     # def get_filter_size(self, radius):
     #     return (radius + 1) ** self.d1 - radius ** self.d1
 
+    def convert2Dcoord(self, coord, batch_size, num_pts):
+        offset = coord.min(dim=2)[0]
+
+        # kaidong test
+        # import pdb; pdb.set_trace()
+
+        coord -= offset.view(batch_size, -1, 1).expand(batch_size, -1, self.d1*num_pts)
+        pts_pick = (-offset) % 3
+        return coord, pts_pick
+
+    def get2D(self, coord, tmp, pts_pick, batch_size):
+    	# kaidong mod
+        # remove points that are out of range in 2d image
+        idx_out_range = coord >= self.size2d
+
+        # kaidong test
+        # import pdb; pdb.set_trace()
+
+        coord[idx_out_range] = 0
+        idx_out_range = idx_out_range.sum(1).nonzero()
+        tmp[idx_out_range[:, 0], idx_out_range[:, 1]] = 0
+
+
+        splatted_2d = torch.zeros((batch_size, self.size2d, self.size2d, 3), dtype=torch.float32).cuda()
+        filter_2d = torch.zeros((batch_size, self.size2d//self.d1, self.size2d//self.d1, 3), dtype=torch.float32).cuda()
+        
+        for i in range(batch_size):
+            # coord: [d, d * num]
+            # d: d-coordinate; d * num: vertices of simplex * number of points
+            # in_barycentric: [batch, d, num]
+            # d: 0- 1- 2- 3-... remainder points
+            # splatted = sparse_sum(coord, in_barycentric.view(-1), 
+            #                       None, args.DEVICE == 'cuda')
+
+            splatted_2d[i] = sparse_sum(coord[i], tmp[i], 
+                                  torch.Size([self.size2d, self.size2d, 3]), True)
+            filter_2d[i] = splatted_2d[i, pts_pick[i, 0]::self.d1, pts_pick[i, 1]::self.d1][:self.size2d//self.d1, :self.size2d//self.d1]
+
+        return filter_2d
+
+
+
     def forward(self, pc1, features):
-        with torch.no_grad():
+        # with torch.no_grad():
             # kaidong test
             # import pdb; pdb.set_trace()
 
             # keys, bary, el_minus_gr = self.get_single(pc1[0])
             keys, in_barycentric, _ = self.get_keys_and_barycentric(pc1)
+            # keys2, in_barycentric2, _2 = self.get_keys_and_barycentric(pc1, True)
 
             d = 2
 
 
             batch_size = features.size(0)
             num_pts = features.size(-1)
-            batch_indices = torch.arange(batch_size, dtype=torch.long)
+            # batch_indices = torch.arange(batch_size, dtype=torch.long)
 
-            batch_indices = batch_indices.pin_memory()
+            # batch_indices = batch_indices.pin_memory()
 
             # convert to 2d image
             # coord [3, d * num_pts]: [d] + [d] + ... + [d]
             coord = keys[:, :d].view(batch_size, d, -1)
-            offset = coord.min(dim=2)[0]
 
-
-
-            # kaidong test
-            # import pdb; pdb.set_trace()
-
-
-            coord -= offset.view(batch_size, -1, 1).expand(batch_size, -1, self.d1*num_pts)
+            coord, pts_pick = self.convert2Dcoord(coord, batch_size, num_pts)
 
             # tmp: [batch, d, d, num]
             # d: coordinates of points; then d: vertices of each simplex
@@ -282,27 +324,29 @@ class LatticeGen(nn.Module):
             # tmp: [d, d * num]
             # d * num_pts: [d] + [d] + ... + [d]
             tmp = tmp.permute(0, 1, 3, 2).contiguous().view(batch_size, 3, -1).permute(0, 2, 1)
-
-            splatted_2d = torch.zeros((batch_size, self.size2d, self.size2d, 3), dtype=torch.float32).cuda()
-            filter_2d = torch.zeros((batch_size, self.size2d//self.d1, self.size2d//self.d1, 3), dtype=torch.float32).cuda()
-            pts_pick = (-offset) % 3
+            
+            filter_2d = self.get2D(coord, tmp, pts_pick, batch_size)
 
 
 
-            for i in range(batch_size):
-                # coord: [d, d * num]
-                # d: d-coordinate; d * num: vertices of simplex * number of points
-                # in_barycentric: [batch, d, num]
-                # d: 0- 1- 2- 3-... remainder points
-                # splatted = sparse_sum(coord, in_barycentric.view(-1), 
-                #                       None, args.DEVICE == 'cuda')
 
-                splatted_2d[i] = sparse_sum(coord[i], tmp[i], 
-                                      torch.Size([self.size2d, self.size2d, 3]), True)
-                filter_2d[i] = splatted_2d[i, pts_pick[i, 0]::self.d1, pts_pick[i, 1]::self.d1][:self.size2d//self.d1, :self.size2d//self.d1]
+            # coord = keys2[:, :d].view(batch_size, d, -1)
+
+            # coord, pts_pick = self.convert2Dcoord(coord, batch_size, num_pts)
+
+            # # tmp: [batch, d, d, num]
+            # # d: coordinates of points; then d: vertices of each simplex
+            # tmp = in_barycentric2[:, None, :, :] * features[:, :, None, :]
+            # # tmp: [d, d * num]
+            # # d * num_pts: [d] + [d] + ... + [d]
+            # tmp = tmp.permute(0, 1, 3, 2).contiguous().view(batch_size, 3, -1).permute(0, 2, 1)
+            
+            # filter_2d_2 = self.get2D(coord, tmp, pts_pick, batch_size)
 
 
-        return filter_2d, [splatted_2d, keys.view(batch_size, 3, -1)]
+            
+            return filter_2d, None, [filter_2d]#[splatted_2d, keys.view(batch_size, 3, -1)]
+        # return filter_2d, filter_2d_2, [filter_2d]#[splatted_2d, keys.view(batch_size, 3, -1)]
 
     # def __repr__(self):
     #     format_string = self.__class__.__name__ + '\n(scales_filter_map: {}\n'.format(self.scales_filter_map)

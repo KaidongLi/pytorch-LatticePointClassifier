@@ -44,6 +44,9 @@ def test(model, loader, num_class=40, vote_num=1):
         pred = vote_pool/vote_num
         pred_choice = pred.data.max(1)[1]
         for cat in np.unique(target.cpu()):
+
+            cat = cat.item()
+
             classacc = pred_choice[target==cat].eq(target[target==cat].long().data).cpu().sum()
             class_acc[cat,0]+= classacc.item()/float(points[target==cat].size()[0])
             class_acc[cat,1]+=1
