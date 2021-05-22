@@ -27,6 +27,25 @@ class get_model(nn.Module):
         x = F.log_softmax(x, dim=1)
         return x, trans_feat
 
+
+class get_adv_loss(torch.nn.Module):
+    def __init__(self, num_class, mat_diff_loss_scale=0.001):
+        super(get_adv_loss, self).__init__()
+        self.mat_diff_loss_scale = mat_diff_loss_scale
+        self.num_class = num_class
+
+    def forward(self, pred, target, kappa=0):
+        tlab = F.one_hot(target.squeeze(), self.num_class)
+
+        # real: target class value
+        real = torch.sum(tlab * pred, dim=1)
+        # other: max value of the rest
+        other = torch.max((1 - tlab) * pred - (tlab * 10000), dim=1)[0]
+
+        loss1 = torch.maximum(torch.Tensor([0.]).cuda(), other - real + kappa)
+        # import pdb; pdb.set_trace()
+        return torch.mean(loss1)
+
 class get_loss(torch.nn.Module):
     def __init__(self, mat_diff_loss_scale=0.001):
         super(get_loss, self).__init__()
