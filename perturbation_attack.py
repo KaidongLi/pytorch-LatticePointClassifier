@@ -288,26 +288,6 @@ def main(args):
     log_string('Load dataset ...')
     DATA_PATH = 'data/modelnet40_normal_resampled/'
 
-    # TRAIN_DATASET = AttackModelNetLoader(root=DATA_PATH, npoint=args.num_point, split='train',
-    #                                                  normal_channel=args.normal)
-    # TEST_DATASET = AttackModelNetLoader(root=DATA_PATH, npoint=args.num_point, split='test',
-    #                                                 normal_channel=args.normal)
-    # trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=args.batch_size, shuffle=True, num_workers=4)
-    # testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
-
-
-    # trainDataLoader = get_cifar_training(
-    #     (0.5070751592371323, 0.48654887331495095, 0.4409178433670343),
-    #     (0.2673342858792401, 0.2564384629170883, 0.27615047132568404),
-    #     num_workers=4, batch_size=args.batch_size, shuffle=True
-    # )
-
-    # testDataLoader = get_cifar_test(
-    #     (0.5070751592371323, 0.48654887331495095, 0.4409178433670343),
-    #     (0.2673342858792401, 0.2564384629170883, 0.27615047132568404),
-    #     num_workers=4, batch_size=args.batch_size, shuffle=False
-    # )
-
     '''MODEL LOADING'''
     num_class = 40
     # num_class = 100
@@ -315,8 +295,8 @@ def main(args):
     shutil.copy('./models/%s.py' % args.model, str(experiment_dir))
     shutil.copy('./models/pointnet_util.py', str(experiment_dir))
 
-    # classifier = MODEL.get_model(num_class,normal_channel=args.normal,s=128*3).cuda()
     classifier = MODEL.get_model(num_class,normal_channel=args.normal).cuda()
+    # classifier = MODEL.get_model(num_class,normal_channel=args.normal,s=128*3).cuda()
     
     # criterion = torch.nn.CrossEntropyLoss()
     criterion = MODEL.get_adv_loss(num_class).cuda()
@@ -331,28 +311,20 @@ def main(args):
         start_epoch = 0
 
 
+    # TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
+    #                                                 normal_channel=args.normal)
+    # testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
+
+    # # kaidong debug test
+    # with torch.no_grad():
+    #     instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class)
+    #     log_string('Test Instance Accuracy: %f, Class Accuracy: %f'% (instance_acc, class_acc))
+
     global_epoch = 0
     global_step = 0
     best_instance_acc = 0.0
     best_class_acc = 0.0
     mean_correct = []
-
-
-
-
-
-    # if args.optimizer == 'Adam':
-    #     optimizer = torch.optim.Adam(
-    #         classifier.parameters(),
-    #         lr=args.learning_rate,
-    #         betas=(0.9, 0.999),
-    #         eps=1e-08,
-    #         weight_decay=args.decay_rate
-    #     )
-    # else:
-    #     optimizer = torch.optim.SGD(classifier.parameters(), lr=0.01, momentum=0.9)
-
-    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.7)
 
     dist_list=[]
     # for victim in range(1, num_class):
@@ -387,131 +359,12 @@ def main(args):
             dist, img = attack_one_batch(classifier, criterion, images, targets, args)
             # dist, img = attack_one_batch(classifier, criterion, images, targets, args, optimizer)
             dist_list.append(dist)
+
+            import pdb; pdb.set_trace()
+            
             np.save(os.path.join(atk_dir, '{}_{}_{}_adv.npy' .format(victim,args.target,j)), img)
             np.save(os.path.join(atk_dir, '{}_{}_{}_orig.npy' .format(victim,args.target,j)),images)#dump originial example for comparison
             
-
-
-
-
-
-    '''TRANING'''
-    # logger.info('Start training...')
-    # for epoch in range(start_epoch,args.epoch):
-    #     log_string('Epoch %d (%d/%s):' % (global_epoch + 1, epoch + 1, args.epoch))
-
-        # kaidong debug test
-        # with torch.no_grad():
-        #     instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class)
-
-        #     if (instance_acc >= best_instance_acc):
-        #         best_instance_acc = instance_acc
-        #         best_epoch = epoch + 1
-
-        #     if (class_acc >= best_class_acc):
-        #         best_class_acc = class_acc
-        #     log_string('Test Instance Accuracy: %f, Class Accuracy: %f'% (instance_acc, class_acc))
-        #     log_string('Best Instance Accuracy: %f, Class Accuracy: %f'% (best_instance_acc, best_class_acc))
-
-        # scheduler.step()
-        # pbar = tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9)
-        # # for batch_id, data in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9):
-        # for batch_id, data in pbar:
-        #     points, target = data
-        #     points = points.data.numpy()
-        #     points = provider.random_point_dropout(points)
-        #     points[:,:, 0:3] = provider.random_scale_point_cloud(points[:,:, 0:3], 0.8, 1.)
-        #     # if points.max() >= SCALE_UP or points.min() <= -SCALE_UP:
-        #     #     print('...')
-
-        #     #     # kaidong test
-        #     #     import pdb; pdb.set_trace()
-
-        #     points[:,:, 0:3] = provider.shift_point_cloud(points[:,:, 0:3])
-        #     points = torch.Tensor(points)
-        #     target = target[:, 0]
-
-        #     points = points.transpose(2, 1)
-
-
-        #     points, target = points.cuda(), target.cuda()
-        #     optimizer.zero_grad()
-
-        #     classifier = classifier.train()
-
-        #     pred, _ = classifier(points)
-        #     loss = criterion(pred, target.long())
-
-        #     if global_step % 10 == 0:
-        #         log_only_string("Loss: %f" % loss)
-        #         pbar.set_description("Loss: %f" % loss)
-
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_ori'),
-            #     # points.permute(0, 2, 3, 1).cpu().data.numpy()
-            #     points.cpu().data.numpy()
-            # )
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_3dlat'),
-            #     _[2].cpu().data.numpy()
-            # )
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_lat'),
-            #     _[1].permute(0, 2, 3, 1).cpu().data.numpy()
-            # )
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_sparse_lat'),
-            #     _[0].permute(0, 2, 3, 1).cpu().data.numpy()
-            # )
-
-
-
-            # # kaidong test
-            # import pdb; pdb.set_trace()
-            
-
-
-            # pred, trans_feat = classifier(points)
-            # loss = criterion(pred, target.long(), trans_feat)
-    #         pred_choice = pred.data.max(1)[1]
-    #         correct = pred_choice.eq(target.long().data).cpu().sum()
-    #         mean_correct.append(correct.item() / float(points.size()[0]))
-    #         loss.backward()
-    #         optimizer.step()
-    #         global_step += 1
-
-    #         # kaidong test
-    #         # if global_step > 5:
-    #         #     global_step = 0
-    #         #     break
-
-    #     train_instance_acc = np.mean(mean_correct)
-    #     log_string('Train Instance Accuracy: %f' % train_instance_acc)
-
-
-    #     with torch.no_grad():
-    #         instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class)
-
-    #         if (instance_acc >= best_instance_acc):
-    #             best_instance_acc = instance_acc
-    #             best_epoch = epoch + 1
-
-    #         if (class_acc >= best_class_acc):
-    #             best_class_acc = class_acc
-    #         log_string('Test Instance Accuracy: %f, Class Accuracy: %f'% (instance_acc, class_acc))
-    #         log_string('Best Instance Accuracy: %f, Class Accuracy: %f'% (best_instance_acc, best_class_acc))
-
-    #         if (instance_acc >= best_instance_acc):
-    #             logger.info('Save model...')
-    #             savepath = str(checkpoints_dir) + '/best_model.pth'
-    #             log_string('Saving at %s'% savepath)
-    #             state = {
-    #                 'epoch': best_epoch,
-    #                 'instance_acc': instance_acc,
-    #                 'class_acc': class_acc,
-    #                 'model_state_dict': classifier.state_dict(),
-    #                 'optimizer_state_dict': optimizer.state_dict(),
-    #             }
-    #             torch.save(state, savepath)
-    #         global_epoch += 1
-
-    # logger.info('End of training...')
 
 if __name__ == '__main__':
     args = parse_args()

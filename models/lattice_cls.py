@@ -73,6 +73,7 @@ class get_model(nn.Module):
         # self.relu = nn.ReLU()
 
     def forward(self, x):
+        # import pdb; pdb.set_trace()
         # d = 2
         # returned splatted has a shape of [b, size, size, c]
         splatted_2d, splatted_2d_2, _ = self.lat_transform(x[:, :3] * (self.size2d//2 - 2), x[:, 3:])
@@ -110,7 +111,7 @@ class get_adv_loss(torch.nn.Module):
         self.num_class = num_class
 
     def forward(self, pred, target, kappa=0):
-        tlab = F.one_hot(target, self.num_class)
+        tlab = F.one_hot(target.squeeze(), self.num_class)
 
         # real: target class value
         real = torch.sum(tlab * pred, dim=1)
@@ -118,6 +119,7 @@ class get_adv_loss(torch.nn.Module):
         other = torch.max((1 - tlab) * pred - (tlab * 10000), dim=1)[0]
 
         loss1 = torch.maximum(torch.Tensor([0.]).cuda(), other - real + kappa)
+        # import pdb; pdb.set_trace()
         return torch.mean(loss1)
 
 
@@ -305,8 +307,10 @@ class LatticeGen(nn.Module):
             # splatted = sparse_sum(coord, in_barycentric.view(-1), 
             #                       None, args.DEVICE == 'cuda')
 
-            splatted_2d[i] = sparse_sum(coord[i], tmp[i], 
-                                  torch.Size([self.size2d, self.size2d, 3]), True)
+            # splatted_2d[i] = sparse_sum(coord[i], tmp[i], 
+            #                       torch.Size([self.size2d, self.size2d, 3]), True)
+            splatted_2d[i] = torch.cuda.sparse.FloatTensor(coord[i], tmp[i], 
+                                  torch.Size([self.size2d, self.size2d, 3])).to_dense()
             filter_2d[i] = splatted_2d[i, pts_pick[i, 0]::self.d1, pts_pick[i, 1]::self.d1][:self.size2d//self.d1, :self.size2d//self.d1]
 
         return filter_2d
