@@ -185,6 +185,12 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
     o_bestdist = [1e10] * BATCH_SIZE
     o_bestscore = [-1] * BATCH_SIZE
     o_bestattack = np.ones(shape=(BATCH_SIZE,NUM_POINT+NUM_ADD,6))
+    o_bestadd = np.ones(shape=(BATCH_SIZE,NUM_ADD,6))
+
+    o_failadd = np.ones(shape=(BATCH_SIZE,NUM_ADD,6))
+    o_leastFailAttack = np.ones(shape=(BATCH_SIZE,NUM_POINT+NUM_ADD,6))
+    o_failPred = [-1] * BATCH_SIZE
+    o_failDist = [1e10] * BATCH_SIZE
 
     init_add_pts = get_critical_points(points_ori, args)
 
@@ -277,6 +283,7 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
             pred_cls_np = pred.max(dim=1)[1].cpu().data.numpy()
             dists_chamfer_np = dists_chamfer.cpu().data.numpy()
             points_np = points_all.cpu().data.numpy()
+            points_add_np = points_add.cpu().data.numpy()
 
             if iteration % ((NUM_ITERATIONS // 10) or 1) == 0:
                 # print(WEIGHT)
@@ -287,7 +294,7 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
 
                 # import pdb; pdb.set_trace()
 
-            for e, (dist, prd, ii) in enumerate(zip(dists_chamfer_np, pred_cls_np, points_np)):
+            for e, (dist, prd, ii, ii_add) in enumerate(zip(dists_chamfer_np, pred_cls_np, points_np, points_add_np)):
                 if dist < bestdist[e] and prd == attacked_label[e]:
                     bestdist[e] = dist
                     bestscore[e] = prd
@@ -295,6 +302,14 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
                     o_bestdist[e] = dist
                     o_bestscore[e] = prd
                     o_bestattack[e] = ii
+                    o_bestadd[e] = ii_add
+                # kaidong mods: no success yet, prepare to record least failure
+                # only start record at the last binary step
+                if out_step == BINARY_SEARCH_STEP-1 and o_bestscore[e] != attacked_label[e] and dist < o_failDist[e]:
+                    o_failDist[e] = dist
+                    o_failPred[e] = prd
+                    o_leastFailAttack[e] = ii
+                    o_failadd[e] = ii_add
 
         # adjust the constant as needed
         for e in range(BATCH_SIZE):
@@ -310,7 +325,15 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
         #bestdist_prev=deepcopy(bestdist)
 
     log_string(" Successfully generated adversarial exampleson {} of {} instances." .format(sum(lower_bound > 0), BATCH_SIZE))
-    return o_bestdist, o_bestattack
+    
+    for e in range(BATCH_SIZE):
+        if o_bestscore[e] != attacked_label[e]:
+            o_bestscore[e] = o_failPred[e]
+            o_bestdist[e] = o_failDist[e]
+            o_bestattack[e] = o_leastFailAttack[e]
+            o_bestadd[e] = o_failadd[e]
+
+    return o_bestdist, o_bestattack, o_bestscore, o_bestadd
 
 
 
@@ -422,12 +445,14 @@ def main(args):
                 images, targets = next(batch_iterator)
 
             # images: b * num_pts * c
-            dist, img = attack_one_batch(classifier, criterion, images, targets, args)
+            dist, img, preds, adds= attack_one_batch(classifier, criterion, images, targets, args)
             # dist, img = attack_one_batch(classifier, criterion, images, targets, args, optimizer)
             dist_list.append(dist)
             
             np.save(os.path.join(atk_dir, '{}_{}_{}_adv.npy' .format(victim,args.target,j)), img)
             np.save(os.path.join(atk_dir, '{}_{}_{}_orig.npy' .format(victim,args.target,j)),images)#dump originial example for comparison
+            np.save(os.path.join(atk_dir, '{}_{}_{}_pred.npy' .format(victim,args.target,j)),preds)
+            np.save(os.path.join(atk_dir, '{}_{}_{}_add.npy' .format(victim,args.target,j)),adds)
             
 
 if __name__ == '__main__':

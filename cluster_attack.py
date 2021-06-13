@@ -17,6 +17,8 @@ import provider
 import importlib
 import shutil
 
+from pytorch3d.loss import chamfer
+
 # from utils import get_cifar_training, get_cifar_test
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -58,6 +60,8 @@ def parse_args():
     parser.add_argument('--upper_bound_weight', type=float, default=80, help='upper_bound value for the parameter lambda')
     parser.add_argument('--step', type=int, default=10, help='binary search step')
     parser.add_argument('--num_iter', type=int, default=500, help='number of iterations for each binary search step')
+    parser.add_argument('--add_num', type=int, default=512, help='number of added points [default: 512]')
+    parser.add_argument('--constraint', default='c', help='type of constraint. h for Hausdoff; c for Chamfer')
 
 
     return parser.parse_args()
@@ -91,6 +95,63 @@ def test(model, loader, num_class=40):
     return instance_acc, class_acc
 
 
+
+def get_critical_points(data, args):
+    ####################################################
+    ### get the critical point of the given point clouds
+    ### data shape: BATCH_SIZE*NUM_POINT*3
+    ### return : BATCH_SIZE*NUM_ADD*3
+    #####################################################
+    BATCH_SIZE = data.size(0)
+    NUM_POINT = data.size(1)
+    NUM_ADD = args.add_num
+
+
+    # sess.run(tf.assign(ops['pert'],tf.zeros([BATCH_SIZE,NUM_ADD,3])))
+    # is_training=False
+
+    #to make sure init_points is in shape of BATCH_SIZE*NUM_ADD*3 so that it can be fed to initial_point_pl
+    # if NUM_ADD > NUM_POINT:
+    #     init_points=torch.tile(data[:,:2,:], [1,NUM_ADD/2,1]) ## due to the max pooling operation of PointNet, 
+    #                                                           ## duplicated points would not affect the global feature vector   
+    # else:
+    #     init_points=data[:, :NUM_ADD, :]
+
+    # feed_dict = {ops['pointclouds_pl']: data,
+    #              ops['is_training_pl']: is_training,
+    #              ops['initial_point_pl']:init_points}
+
+    # pre_max_val,post_max_val=sess.run([ops['pre_max'],ops['post_max']],feed_dict=feed_dict)
+    # pre_max_val = pre_max_val[:,:NUM_POINT,...]
+    # pre_max_val=np.reshape(pre_max_val,[BATCH_SIZE,NUM_POINT,1024])#1024 is the dimension of PointNet's global feature vector
+    
+    critical_points=[]
+    for i in range(BATCH_SIZE):
+        #get the most important critical points if NUM_ADD < number of critical points
+        #the importance is demtermined by counting how many elements in the global featrue vector is 
+        #contributed by one specific point 
+
+        rdn_idx = np.random.randint(0, NUM_POINT, 1024)
+        idx,counts=np.unique(rdn_idx, return_counts=True)
+        idx_idx=np.argsort(counts)
+        # idx:     unique feature channel with max value
+        # counts:  how many times the max value happened
+        # idx_idx: arg in ascending order
+
+        if len(counts) > NUM_ADD:
+            points = data[i][idx[idx_idx[-NUM_ADD:]]]
+        else:
+            points = data[i][idx]
+            tmp_num = NUM_ADD - len(counts)
+            while(tmp_num > len(counts)):
+                points = np.concatenate([points,data[i][idx]])
+                tmp_num-=len(counts)
+            points = np.concatenate([points,data[i][-tmp_num:]])
+        
+        critical_points.append(points)
+    critical_points=np.stack(critical_points)
+    return critical_points
+
 def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, optimizer=None):
 
     ###############################################################
@@ -108,12 +169,12 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
     NUM_POINT = args.num_point
     BINARY_SEARCH_STEP = args.step
     NUM_ITERATIONS = args.num_iter
+    NUM_ADD = args.add_num
 
     #the bound for the binary search
     lower_bound=np.zeros(BATCH_SIZE)
     WEIGHT = torch.Tensor(np.ones(BATCH_SIZE) * INITIAL_WEIGHT).cuda()
     upper_bound=np.ones(BATCH_SIZE) * UPPER_BOUND_WEIGHT
-
 
     # o_bestdist:   starting with norm 1e10, 
     #               recording lowest norm of successful perturbation
@@ -121,14 +182,13 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
     #               recording the successful attacked label
     # o_bestattack: starting with 1s,
     #               
-    o_bestdist = [1e10] * BATCH_SIZE
+    o_bestdist   = [1e10] * BATCH_SIZE
+    o_bestdist_h = [1e10] * BATCH_SIZE
+    o_bestdist_f = [1e10] * BATCH_SIZE
     o_bestscore = [-1] * BATCH_SIZE
-    o_bestattack = np.ones(shape=(BATCH_SIZE,NUM_POINT,6))
+    o_bestattack = np.ones(shape=(BATCH_SIZE,NUM_POINT+NUM_ADD*NUM_CLUSTER,6))
 
-    o_leastFailAttack = np.ones(shape=(BATCH_SIZE,NUM_POINT,6))
-    o_failPred = [-1] * BATCH_SIZE
-    o_failDist = [1e10] * BATCH_SIZE
-    o_record2D = np.ones(shape=(BATCH_SIZE, 128, 128, 3))
+    init_add_pts = get_critical_points(points_ori, args)
 
     for out_step in range(BINARY_SEARCH_STEP):
 
@@ -148,9 +208,7 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
         # pert = m.rsample()
 
         # pert = (torch.randn((BATCH_SIZE,NUM_POINT,3), requires_grad=True, device='cuda'))
-        pert = torch.normal(0, 0.1, size=(BATCH_SIZE,NUM_POINT,6), requires_grad=True, device='cuda')
-        # pert = torch.normal(0, 0.1, size=(BATCH_SIZE,NUM_POINT,3), requires_grad=True, device='cuda')
-
+        pert = torch.normal(0, 0.01, size=(BATCH_SIZE,NUM_ADD,3), requires_grad=True, device='cuda')
 
         # pert = torch.empty((BATCH_SIZE,NUM_POINT,3)).normal_(0, 0.01)
         # pert = pert.requires_grad_(True).cuda()
@@ -192,44 +250,46 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
             # add perturbation
             points = points_ori
             points = points.cuda()
-            # points[:,:, 0:3] = points[:,:, 0:3] + pert
-            points = points + pert
 
+            points_add = torch.Tensor(init_add_pts).cuda()
+            points_add[:, :, 0:3] = points_add[:, :, 0:3] + pert
 
+            points_all = torch.cat((points, points_add), dim=1)
 
-            points_cls = points.transpose(2, 1)
+            points_cls = points_all.transpose(2, 1)
             points_cls, attacked_label = points_cls.cuda(), attacked_label.cuda()
 
-            
             optimizer.zero_grad()
 
             classifier = classifier.train()
             pred, _ = classifier(points_cls)
             adv_loss = criterion(pred, attacked_label.long())
+            # import pdb; pdb.set_trace()
 
             #perturbation l2 constraint
-            pert_norm = torch.square(pert).sum(dim=2).sum(dim=1).sqrt().cuda()
+            dists_chamfer = chamfer.chamfer_distance(points_add, points, batch_reduction=None)[0]
 
-            norm_loss = (WEIGHT * pert_norm).mean()
+
+            norm_loss = (WEIGHT * dists_chamfer).mean()
 
             loss = adv_loss + norm_loss
             loss.backward()
             optimizer.step()
 
             pred_cls_np = pred.max(dim=1)[1].cpu().data.numpy()
-            pert_norm_np = pert_norm.cpu().data.numpy()
-            points_np = points.cpu().data.numpy()
+            dists_chamfer_np = dists_chamfer.cpu().data.numpy()
+            points_np = points_all.cpu().data.numpy()
 
             if iteration % ((NUM_ITERATIONS // 10) or 1) == 0:
                 # print(WEIGHT)
                 log_string((" Iteration {} of {}: loss={} adv_loss:{} " +
                                "distance={}")
                               .format(iteration, NUM_ITERATIONS,
-                                loss, adv_loss, pert_norm.mean()))
+                                loss, adv_loss, dists_chamfer.mean()))
 
                 # import pdb; pdb.set_trace()
 
-            for e, (dist, prd, ii) in enumerate(zip(pert_norm_np, pred_cls_np, points_np)):
+            for e, (dist, prd, ii) in enumerate(zip(dists_chamfer_np, pred_cls_np, points_np)):
                 if dist < bestdist[e] and prd == attacked_label[e]:
                     bestdist[e] = dist
                     bestscore[e] = prd
@@ -237,16 +297,6 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
                     o_bestdist[e] = dist
                     o_bestscore[e] = prd
                     o_bestattack[e] = ii
-                    if args.model == 'lattice_cls':
-                        o_record2D[e] = _[0][e].cpu().data.numpy()
-                # kaidong mods: no success yet, prepare to record least failure
-                # only start record at the last binary step
-                if out_step == BINARY_SEARCH_STEP-1 and o_bestscore[e] != attacked_label[e] and dist < o_failDist[e]:
-                    o_failDist[e] = dist
-                    o_failPred[e] = prd
-                    o_leastFailAttack[e] = ii
-                    if args.model == 'lattice_cls':
-                        o_record2D[e] = _[0][e].cpu().data.numpy()
 
         # adjust the constant as needed
         for e in range(BATCH_SIZE):
@@ -259,19 +309,10 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
                 # failure
                 upper_bound[e] = min(upper_bound[e], WEIGHT[e])
                 WEIGHT[e] = (lower_bound[e] + upper_bound[e]) / 2
-
-                # kaidong 
         #bestdist_prev=deepcopy(bestdist)
 
     log_string(" Successfully generated adversarial exampleson {} of {} instances." .format(sum(lower_bound > 0), BATCH_SIZE))
-    
-    for e in range(BATCH_SIZE):
-        if o_bestscore[e] != attacked_label[e]:
-            o_bestscore[e] = o_failPred[e]
-            o_bestdist[e] = o_failDist[e]
-            o_bestattack[e] = o_leastFailAttack[e]
-
-    return o_bestdist, o_bestattack, o_bestscore, o_record2D
+    return o_bestdist, o_bestattack
 
 
 
@@ -300,7 +341,7 @@ def main(args):
     atk_dir.mkdir(exist_ok=True)
 
     '''LOG'''
-    args = parse_args()
+    # args = parse_args()
     # logger = logging.getLogger("Model")
     # logger.setLevel(logging.INFO)
     # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -383,17 +424,12 @@ def main(args):
                 images, targets = next(batch_iterator)
 
             # images: b * num_pts * c
-            dist, img, preds, img_2d = attack_one_batch(classifier, criterion, images, targets, args)
+            dist, img = attack_one_batch(classifier, criterion, images, targets, args)
             # dist, img = attack_one_batch(classifier, criterion, images, targets, args, optimizer)
             dist_list.append(dist)
-
-            # import pdb; pdb.set_trace()
             
             np.save(os.path.join(atk_dir, '{}_{}_{}_adv.npy' .format(victim,args.target,j)), img)
             np.save(os.path.join(atk_dir, '{}_{}_{}_orig.npy' .format(victim,args.target,j)),images)#dump originial example for comparison
-            np.save(os.path.join(atk_dir, '{}_{}_{}_pred.npy' .format(victim,args.target,j)),preds)
-            if args.model == 'lattice_cls':
-                np.save(os.path.join(atk_dir, '{}_{}_{}_2dimg.npy' .format(victim,args.target,j)), img_2d)
             
 
 if __name__ == '__main__':
@@ -402,7 +438,7 @@ if __name__ == '__main__':
     timestr = str(datetime.datetime.now().strftime('%Y-%m-%d_%H-%M'))
     experiment_dir = Path('./log/')
     experiment_dir.mkdir(exist_ok=True)
-    experiment_dir = experiment_dir.joinpath('perturbation')
+    experiment_dir = experiment_dir.joinpath('independent')
     experiment_dir.mkdir(exist_ok=True)
     if args.log_dir is None:
         experiment_dir = experiment_dir.joinpath(timestr)

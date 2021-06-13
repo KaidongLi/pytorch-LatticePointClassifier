@@ -75,8 +75,12 @@ class get_model(nn.Module):
     def forward(self, x):
         # import pdb; pdb.set_trace()
         # d = 2
+
+        vv = x[:, 3:]
+        # vv = torch.ones(x[:, 3:].size()).cuda()
+        # vv = x[:, :3]
         # returned splatted has a shape of [b, size, size, c]
-        splatted_2d, splatted_2d_2, _ = self.lat_transform(x[:, :3] * (self.size2d//2 - 2), x[:, 3:])
+        splatted_2d, splatted_2d_2, _ = self.lat_transform(x[:, :3] * (self.size2d//2 - 2), vv)
         # splatted_2d = torch.cat((splatted_2d, splatted_2d_2), 3).permute(0, 3, 1, 2).contiguous()
         splatted_2d = splatted_2d.permute(0, 3, 1, 2).contiguous()
 
@@ -92,7 +96,7 @@ class get_model(nn.Module):
 
 
 
-        return outputs, None#[_[0].permute(0, 3, 1, 2), splatted_2d, _[1]]
+        return outputs, [_[0]]#[_[0].permute(0, 3, 1, 2), splatted_2d, _[1]]
 
 
 
@@ -311,7 +315,10 @@ class LatticeGen(nn.Module):
             #                       torch.Size([self.size2d, self.size2d, 3]), True)
             splatted_2d[i] = torch.cuda.sparse.FloatTensor(coord[i], tmp[i], 
                                   torch.Size([self.size2d, self.size2d, 3])).to_dense()
+            # import pdb; pdb.set_trace()
             filter_2d[i] = splatted_2d[i, pts_pick[i, 0]::self.d1, pts_pick[i, 1]::self.d1][:self.size2d//self.d1, :self.size2d//self.d1]
+
+        filter_2d[filter_2d>0] = 1.0
 
         return filter_2d
 
@@ -338,6 +345,7 @@ class LatticeGen(nn.Module):
             # convert to 2d image
             # coord [3, d * num_pts]: [d] + [d] + ... + [d]
             coord = keys[:, :d].view(batch_size, d, -1)
+            # import pdb; pdb.set_trace()
 
             coord, pts_pick = self.convert2Dcoord(coord, batch_size, num_pts)
 
