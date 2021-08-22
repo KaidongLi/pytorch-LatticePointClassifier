@@ -17,7 +17,8 @@ import provider
 import importlib
 import shutil
 
-# from utils import get_cifar_training, get_cifar_test
+
+from utils import get_backbone # get_cifar_training, get_cifar_test
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
@@ -31,6 +32,8 @@ SCALE_UP  = 32
 
 # SCALE_LOW = 150
 # SCALE_UP  = 192
+
+CLASS_ATTACK = [0, 2, 4, 8, 22, 25, 30, 33, 35, 37]
 
 def log_string(str):
     logger.info(str)
@@ -59,6 +62,9 @@ def parse_args():
     parser.add_argument('--step', type=int, default=10, help='binary search step')
     parser.add_argument('--num_iter', type=int, default=500, help='number of iterations for each binary search step')
 
+    parser.add_argument('--backbone', default='resnet50', help='backbone network name [default: resnet50]')
+    parser.add_argument('--dim', type=int, default=128, help='size of final 2d image [default: 128]')
+    
 
     return parser.parse_args()
 
@@ -123,14 +129,24 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
     #               
     o_bestdist = [1e10] * BATCH_SIZE
     o_bestscore = [-1] * BATCH_SIZE
-    o_bestattack = np.ones(shape=(BATCH_SIZE,NUM_POINT,6))
+    if args.normal:
+        o_bestattack = np.ones(shape=(BATCH_SIZE,NUM_POINT,6))
 
-    o_leastFailAttack = np.ones(shape=(BATCH_SIZE,NUM_POINT,6))
+        o_leastFailAttack = np.ones(shape=(BATCH_SIZE,NUM_POINT,6))
+        o_record2D = np.ones(shape=(BATCH_SIZE, args.dim, args.dim, 3))
+    else:
+        o_bestattack = np.ones(shape=(BATCH_SIZE,NUM_POINT,3))
+
+        o_leastFailAttack = np.ones(shape=(BATCH_SIZE,NUM_POINT,3))
+        o_record2D = np.ones(shape=(BATCH_SIZE, args.dim, args.dim, 1))
+
+
     o_failPred = [-1] * BATCH_SIZE
     o_failDist = [1e10] * BATCH_SIZE
-    o_record2D = np.ones(shape=(BATCH_SIZE, 128, 128, 3))
 
     for out_step in range(BINARY_SEARCH_STEP):
+        log_string((" Step {} of {}")
+                              .format(out_step, BINARY_SEARCH_STEP))
 
         # feed_dict[ops['dist_weight']]=WEIGHT
 
@@ -148,8 +164,17 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
         # pert = m.rsample()
 
         # pert = (torch.randn((BATCH_SIZE,NUM_POINT,3), requires_grad=True, device='cuda'))
-        pert = torch.normal(0, 0.1, size=(BATCH_SIZE,NUM_POINT,6), requires_grad=True, device='cuda')
+        # INIT_STD = 1e-7
+        INIT_STD = 0.1
+
+        if args.normal:
+            pert = torch.normal(0, INIT_STD, size=(BATCH_SIZE,NUM_POINT,6), requires_grad=True, device='cuda')
+        else:
+            pert = torch.normal(0, INIT_STD, size=(BATCH_SIZE,NUM_POINT,3), requires_grad=True, device='cuda')
+
         # pert = torch.normal(0, 0.1, size=(BATCH_SIZE,NUM_POINT,3), requires_grad=True, device='cuda')
+            
+        # import pdb; pdb.set_trace()
 
 
         # pert = torch.empty((BATCH_SIZE,NUM_POINT,3)).normal_(0, 0.01)
@@ -192,8 +217,8 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
             # add perturbation
             points = points_ori
             points = points.cuda()
-            # points[:,:, 0:3] = points[:,:, 0:3] + pert
-            points = points + pert
+            points[:,:, 0:3] = points[:,:, 0:3] + pert
+            # points = points + pert
 
 
 
@@ -215,6 +240,9 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
             loss = adv_loss + norm_loss
             loss.backward()
             optimizer.step()
+
+            # import pdb; pdb.set_trace()
+
 
             pred_cls_np = pred.max(dim=1)[1].cpu().data.numpy()
             pert_norm_np = pert_norm.cpu().data.numpy()
@@ -265,13 +293,13 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
 
     log_string(" Successfully generated adversarial exampleson {} of {} instances." .format(sum(lower_bound > 0), BATCH_SIZE))
     
-    for e in range(BATCH_SIZE):
-        if o_bestscore[e] != attacked_label[e]:
-            o_bestscore[e] = o_failPred[e]
-            o_bestdist[e] = o_failDist[e]
-            o_bestattack[e] = o_leastFailAttack[e]
+    # for e in range(BATCH_SIZE):
+    #     if o_bestscore[e] != attacked_label[e]:
+    #         o_bestscore[e] = o_failPred[e]
+    #         o_bestdist[e] = o_failDist[e]
+    #         o_bestattack[e] = o_leastFailAttack[e]
 
-    return o_bestdist, o_bestattack, o_bestscore, o_record2D
+    return o_bestdist, o_bestattack, o_bestscore, o_record2D, [o_leastFailAttack]
 
 
 
@@ -323,7 +351,10 @@ def main(args):
     shutil.copy('./models/pointnet_util.py', str(experiment_dir))
 
     # classifier = MODEL.get_model(num_class,normal_channel=args.normal).cuda()
-    classifier = MODEL.get_model(num_class,normal_channel=args.normal,s=128*3).cuda()
+    # classifier = MODEL.get_model(num_class,normal_channel=args.normal,s=128*3).cuda()
+    classifier = MODEL.get_model(num_class,
+        normal_channel=args.normal, 
+        backbone=get_backbone(args.backbone, num_class, 1), s=args.dim*3).cuda()
     
     # criterion = torch.nn.CrossEntropyLoss()
     criterion = MODEL.get_adv_loss(num_class).cuda()
@@ -354,8 +385,11 @@ def main(args):
     mean_correct = []
 
     dist_list=[]
+
+    # lg_class = 0
     # for victim in range(1, num_class):
-    for victim in range(num_class):
+    # for victim in range(num_class):
+    for victim in CLASS_ATTACK:
         if victim == args.target:
             continue
 
@@ -365,8 +399,10 @@ def main(args):
                                                         normal_channel=args.normal, victim=victim, target=args.target)
 
         # skip classes with small amount of examples
-        if len(TEST_DATASET) < 50:
+        if len(TEST_DATASET) < 100:
             continue
+        # else:
+        #     lg_class += 1
 
         # trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
         testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
@@ -383,17 +419,20 @@ def main(args):
                 images, targets = next(batch_iterator)
 
             # images: b * num_pts * c
-            dist, img, preds, img_2d = attack_one_batch(classifier, criterion, images, targets, args)
+            dist, img, preds, img_2d, img_f = attack_one_batch(classifier, criterion, images, targets, args)
             # dist, img = attack_one_batch(classifier, criterion, images, targets, args, optimizer)
             dist_list.append(dist)
 
             # import pdb; pdb.set_trace()
-            
+            log_string("{}_{}_{} attacked.".format(victim,args.target,j))
             np.save(os.path.join(atk_dir, '{}_{}_{}_adv.npy' .format(victim,args.target,j)), img)
+            np.save(os.path.join(atk_dir, '{}_{}_{}_adv_f.npy' .format(victim,args.target,j)), img_f[0])
             np.save(os.path.join(atk_dir, '{}_{}_{}_orig.npy' .format(victim,args.target,j)),images)#dump originial example for comparison
             np.save(os.path.join(atk_dir, '{}_{}_{}_pred.npy' .format(victim,args.target,j)),preds)
             if args.model == 'lattice_cls':
                 np.save(os.path.join(atk_dir, '{}_{}_{}_2dimg.npy' .format(victim,args.target,j)), img_2d)
+
+    # print('class num: ', num_class, ', class with enough images: ', lg_class)
             
 
 if __name__ == '__main__':

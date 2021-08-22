@@ -79,13 +79,13 @@ class BottleNeck(nn.Module):
     
 class ResNet(nn.Module):
 
-    def __init__(self, block, num_block, num_classes=100):
+    def __init__(self, block, num_block, num_classes=100, c=3):
         super().__init__()
 
         self.in_channels = 64
 
         self.conv1 = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(c, 64, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True))
         #we use a different inputsize than the original paper
@@ -123,11 +123,16 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
+        # import pdb; pdb.set_trace()
         output = self.conv1(x)
         output = self.conv2_x(output)
+        # pooling in conv3
         output = self.conv3_x(output)
+        # pooling in conv4
         output = self.conv4_x(output)
+        # pooling in conv5
         output = self.conv5_x(output)
+        # avg pooling to [1, 1]
         output = self.avg_pool(output)
         output = output.view(output.size(0), -1)
         output = self.fc(output)
@@ -144,10 +149,10 @@ def resnet34():
     """
     return ResNet(BasicBlock, [3, 4, 6, 3])
 
-def resnet50(num_cls=100):
+def resnet50(num_cls=100, c=3):
     """ return a ResNet 50 object
     """
-    return ResNet(BottleNeck, [3, 4, 6, 3], num_cls)
+    return ResNet(BottleNeck, [3, 4, 6, 3], num_cls, c)
 
 def resnet101():
     """ return a ResNet 101 object

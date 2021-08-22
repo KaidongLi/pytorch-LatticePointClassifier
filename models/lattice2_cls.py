@@ -48,7 +48,7 @@ class get_model(nn.Module):
 
     # kaidong: test
     # s is the final image scale
-    def __init__(self, k=40, normal_channel=True, backbone=resnet50(40), s=128*3):
+    def __init__(self, k=40, normal_channel=True, s=128*3):
         super(get_model, self).__init__()
 
 
@@ -63,7 +63,7 @@ class get_model(nn.Module):
         # self.pca_rotate = RotatePCA()
         self.lat_transform = LatticeGen(s, normal_channel)
         self.size2d = s
-        self.network_2d = backbone
+        self.network_2d = resnet50(k)
 
         self.normal_channel = normal_channel
 
@@ -169,27 +169,24 @@ class LatticeGen(nn.Module):
     def __init__(self, s, normal_channel):
         super(LatticeGen, self).__init__()
 
-        d = 3
+        d = 2
         self.d = d
-        # self.d1 = self.d + 1
+        self.d1 = self.d + 1
 
-
-        self.d1 = self.d
         self.size2d = s
         self.normal_channel = normal_channel
         # self.scales_filter_map = args.scales_filter_map
 
-        # elevate_left = torch.ones((self.d1, self.d), dtype=torch.float32).triu()
-        # elevate_left[1:, ] += torch.diag(torch.arange(-1, -d - 1, -1, dtype=torch.float32))
-        # elevate_right = torch.diag(1. / (torch.arange(1, d + 1, dtype=torch.float32) *
-        #                                  torch.arange(2, d + 2, dtype=torch.float32)).sqrt())
-        # self.expected_std = (d + 1) * math.sqrt(2 / 3)
-        # self.elevate_mat = torch.mm(elevate_left, elevate_right).cuda()
+        elevate_left = torch.ones((self.d1, self.d), dtype=torch.float32).triu()
+        elevate_left[1:, ] += torch.diag(torch.arange(-1, -d - 1, -1, dtype=torch.float32))
+        elevate_right = torch.diag(1. / (torch.arange(1, d + 1, dtype=torch.float32) *
+                                         torch.arange(2, d + 2, dtype=torch.float32)).sqrt())
+        self.expected_std = (d + 1) * math.sqrt(2 / 3)
+        self.elevate_mat = torch.mm(elevate_left, elevate_right).cuda()
         # (d+1,d)
-        # del elevate_left, elevate_right
+        del elevate_left, elevate_right
 
-
-        self.elevate_mat = (torch.FloatTensor([[2, -1, -1], [-1, 2, -1], [-1, -1, 2]]) / torch.tensor(6.).sqrt() ).cuda()
+        # self.elevate_mat = (torch.FloatTensor([[2, -1, -1], [-1, 2, -1], [-1, -1, 2]]) / torch.tensor(6.).sqrt() ).cuda()
         # self.elevate_mat2 = F.normalize(torch.FloatTensor([[8, -7, -1], [-1, -1, 2], [-7, 8, -1]]), dim=0).cuda()
 
 
@@ -205,7 +202,7 @@ class LatticeGen(nn.Module):
             canonical[-i:, i] = i - self.d1
         self.canonical = canonical.cuda()
 
-        self.dim_indices = torch.arange(self.d1, dtype=torch.long)[:, None].cuda()
+        self.dim_indices = torch.arange(self.d, dtype=torch.long)[:, None].cuda()
 
         # self.radius2offset = {}
         # radius_set = set([item for line in self.scales_filter_map for item in line[1:] if item != -1])
@@ -228,11 +225,7 @@ class LatticeGen(nn.Module):
         point_indices = torch.arange(num_points, dtype=torch.long)[None, None, :]
         batch_indices = torch.arange(batch_size, dtype=torch.long)[:, None, None]
 
-        if is_2nd_trans:
-        	elevated = torch.matmul(self.elevate_mat2, pc)
-        else:
-        	# elevated = torch.matmul(self.elevate_mat, pc) * self.expected_std  # (d+1, N)
-        	elevated = torch.matmul(self.elevate_mat, pc) # * self.expected_std  # (d+1, N)
+        elevated = torch.matmul(self.elevate_mat.t(), pc) # * self.expected_std  # (d+1, N)
 
         # kaidong: to 2d
         # elevated = elevated[:, :self.d1, :] # * self.expected_std  # (d+1, N)
@@ -250,10 +243,6 @@ class LatticeGen(nn.Module):
         # greedy[el_minus_gr < (-self.d1/2)] -= self.d1
 
         el_minus_gr = elevated - greedy
-
-
-        # kaidong test
-        # import pdb; pdb.set_trace()
 
 
         rank = torch.sort(el_minus_gr, dim=1, descending=True)[1]
@@ -284,6 +273,10 @@ class LatticeGen(nn.Module):
         greedy = greedy.type(torch.long)
 
         barycentric = torch.zeros((batch_size, self.d1 + 1, num_points), dtype=torch.float32).cuda()
+
+
+        # kaidong test
+        import pdb; pdb.set_trace()
 
         barycentric[batch_indices, self.d - rank, point_indices] += el_minus_gr
         barycentric[batch_indices, self.d1 - rank, point_indices] -= el_minus_gr
@@ -375,7 +368,7 @@ class LatticeGen(nn.Module):
 
             # convert to 2d image
             # coord [3, d * num_pts]: [d] + [d] + ... + [d]
-            coord = keys[:, :d].view(batch_size, d, -1)
+            coord = keys.view(batch_size, d, -1)
             # import pdb; pdb.set_trace()
 
             coord, pts_pick = self.convert2Dcoord(coord, batch_size, num_pts)

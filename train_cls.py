@@ -3,6 +3,7 @@ Author: Benny
 Date: Nov 2019
 """
 from data_utils.ModelNetDataLoader import ModelNetDataLoader
+from data_utils.PCAModelNetDataLoader import PCAModelNetDataLoader
 import argparse
 import numpy as np
 import os
@@ -16,7 +17,7 @@ import provider
 import importlib
 import shutil
 
-# from utils import get_cifar_training, get_cifar_test
+from utils import get_backbone #, get_cifar_training, get_cifar_test
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
@@ -37,6 +38,7 @@ def parse_args():
     parser = argparse.ArgumentParser('PointNet')
     parser.add_argument('--batch_size', type=int, default=24, help='batch size in training [default: 24]')
     parser.add_argument('--model', default='pointnet_cls', help='model name [default: pointnet_cls]')
+    parser.add_argument('--backbone', default='resnet50', help='backbone network name [default: resnet50]')
     parser.add_argument('--epoch',  default=200, type=int, help='number of epoch in training [default: 200]')
     parser.add_argument('--learning_rate', default=0.001, type=float, help='learning rate in training [default: 0.001]')
     parser.add_argument('--gpu', type=str, default='0', help='specify gpu device [default: 0]')
@@ -45,6 +47,8 @@ def parse_args():
     parser.add_argument('--log_dir', type=str, default=None, help='experiment root')
     parser.add_argument('--decay_rate', type=float, default=1e-4, help='decay rate [default: 1e-4]')
     parser.add_argument('--normal', action='store_true', default=False, help='Whether to use normal information [default: False]')
+    parser.add_argument('--pca', action='store_true', default=False, help='Whether to use PCA to rotate data [default: False]')
+    parser.add_argument('--dim', type=int, default=128, help='size of final 2d image [default: 128]')
     return parser.parse_args()
 
 def test(model, loader, num_class=40):
@@ -117,10 +121,19 @@ def main(args):
     log_string('Load dataset ...')
     DATA_PATH = 'data/modelnet40_normal_resampled/'
 
-    TRAIN_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='train',
-                                                     normal_channel=args.normal)
-    TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
+    if args.pca:
+        TRAIN_DATASET = PCAModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='train',
                                                     normal_channel=args.normal)
+        TEST_DATASET = PCAModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
+                                                        normal_channel=args.normal)
+    else:
+        TRAIN_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='train',
+                                                         normal_channel=args.normal)
+        TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
+                                                        normal_channel=args.normal)
+
+
+
     trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=args.batch_size, shuffle=True, num_workers=4)
     testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
@@ -144,7 +157,13 @@ def main(args):
     shutil.copy('./models/%s.py' % args.model, str(experiment_dir))
     shutil.copy('./models/pointnet_util.py', str(experiment_dir))
 
-    classifier = MODEL.get_model(num_class,normal_channel=args.normal,s=128*3).cuda()
+    # classifier = MODEL.get_model(num_class,normal_channel=args.normal,s=128*3).cuda()
+    # classifier = MODEL.get_model(num_class,
+    #     normal_channel=args.normal, 
+    #     backbone=get_backbone(args.backbone, num_class, 1)).cuda()
+    classifier = MODEL.get_model(num_class,
+        normal_channel=args.normal, 
+        backbone=get_backbone(args.backbone, num_class, 1), s=args.dim*3).cuda()
     
     criterion = torch.nn.CrossEntropyLoss()
     # criterion = MODEL.get_loss().cuda()
@@ -206,10 +225,7 @@ def main(args):
             # if points.max() >= SCALE_UP or points.min() <= -SCALE_UP:
             #     print('...')
 
-            #     # kaidong test
-            #     import pdb; pdb.set_trace()
-
-            points[:,:, 0:3] = provider.shift_point_cloud(points[:,:, 0:3])
+            # points[:,:, 0:3] = provider.shift_point_cloud(points[:,:, 0:3])
             points = torch.Tensor(points)
             target = target[:, 0]
 
@@ -228,15 +244,41 @@ def main(args):
                 log_only_string("Loss: %f" % loss)
                 pbar.set_description("Loss: %f" % loss)
 
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_ori'),
+
+            # aa, bb, cc = torch.pca_lowrank(points.transpose(2, 1))
+
+            # kaidong test
+            # import pdb; pdb.set_trace()
+
+            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_orig'),
             #     # points.permute(0, 2, 3, 1).cpu().data.numpy()
-            #     points.cpu().data.numpy()
+            #     points.permute(0, 2, 1).cpu().data.numpy()
+            #     # points.cpu().data.numpy()
+            # )
+            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_veceigen'),
+            #     cc.cpu().data.numpy()
+            # )
+            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_valeigen'),
+            #     bb.cpu().data.numpy()
+            # )
+
+            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_rot'),
+            #     # points.permute(0, 2, 3, 1).cpu().data.numpy()
+            #     rot_pts.permute(0, 2, 1).cpu().data.numpy()
+            #     # points.cpu().data.numpy()
+            # )
+            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_rot_veceigen'),
+            #     ccc.cpu().data.numpy()
+            # )
+            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_rot_valeigen'),
+            #     bbb.cpu().data.numpy()
             # )
             # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_3dlat'),
             #     _[2].cpu().data.numpy()
             # )
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_lat'),
-            #     _[1].permute(0, 2, 3, 1).cpu().data.numpy()
+            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_2dimg'),
+            #     # _[0].permute(0, 2, 3, 1).cpu().data.numpy()
+            #     _[0].cpu().data.numpy()
             # )
             # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_sparse_lat'),
             #     _[0].permute(0, 2, 3, 1).cpu().data.numpy()
@@ -245,18 +287,20 @@ def main(args):
 
 
             # # kaidong test
-            # import pdb; pdb.set_trace()
             
-
-
             # pred, trans_feat = classifier(points)
             # loss = criterion(pred, target.long(), trans_feat)
+
+
+
             pred_choice = pred.data.max(1)[1]
             correct = pred_choice.eq(target.long().data).cpu().sum()
             mean_correct.append(correct.item() / float(points.size()[0]))
             loss.backward()
             optimizer.step()
             global_step += 1
+
+
 
             # kaidong test
             # if global_step > 5:

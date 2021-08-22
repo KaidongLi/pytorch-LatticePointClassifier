@@ -103,6 +103,10 @@ class PointNetEncoder(nn.Module):
     def forward(self, x):
         B, D, N = x.size()
         trans = self.stn(x)
+
+        # kaidong test
+        # import pdb; pdb.set_trace()
+        
         x = x.transpose(2, 1)
         if D >3 :
             x, feature = x.split(3,dim=2)

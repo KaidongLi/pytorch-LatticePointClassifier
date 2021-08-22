@@ -18,6 +18,7 @@ import importlib
 import shutil
 
 from pytorch3d.loss import chamfer
+from utils import get_backbone
 
 # from utils import get_cifar_training, get_cifar_test
 
@@ -33,6 +34,8 @@ SCALE_UP  = 32
 
 # SCALE_LOW = 150
 # SCALE_UP  = 192
+
+CLASS_ATTACK = [0, 2, 4, 8, 22, 25, 30, 33, 35, 37]
 
 def log_string(str):
     logger.info(str)
@@ -62,6 +65,9 @@ def parse_args():
     parser.add_argument('--num_iter', type=int, default=500, help='number of iterations for each binary search step')
     parser.add_argument('--add_num', type=int, default=512, help='number of added points [default: 512]')
     parser.add_argument('--constraint', default='c', help='type of constraint. h for Hausdoff; c for Chamfer')
+    
+    parser.add_argument('--backbone', default='resnet50', help='backbone network name [default: resnet50]')
+    parser.add_argument('--dim', type=int, default=128, help='size of final 2d image [default: 128]')
 
 
     return parser.parse_args()
@@ -184,17 +190,33 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
     #               
     o_bestdist = [1e10] * BATCH_SIZE
     o_bestscore = [-1] * BATCH_SIZE
-    o_bestattack = np.ones(shape=(BATCH_SIZE,NUM_POINT+NUM_ADD,6))
-    o_bestadd = np.ones(shape=(BATCH_SIZE,NUM_ADD,6))
 
-    o_failadd = np.ones(shape=(BATCH_SIZE,NUM_ADD,6))
-    o_leastFailAttack = np.ones(shape=(BATCH_SIZE,NUM_POINT+NUM_ADD,6))
+
+    if args.normal:
+        o_bestattack = np.ones(shape=(BATCH_SIZE,NUM_POINT+NUM_ADD,6))
+        o_bestadd = np.ones(shape=(BATCH_SIZE,NUM_ADD,6))
+        o_failadd = np.ones(shape=(BATCH_SIZE,NUM_ADD,6))
+
+        o_leastFailAttack = np.ones(shape=(BATCH_SIZE,NUM_POINT+NUM_ADD,6))
+        o_record2D = np.ones(shape=(BATCH_SIZE, args.dim, args.dim, 3))
+    else:
+        o_bestattack = np.ones(shape=(BATCH_SIZE,NUM_POINT+NUM_ADD,3))
+        o_bestadd = np.ones(shape=(BATCH_SIZE,NUM_ADD,3))
+        o_failadd = np.ones(shape=(BATCH_SIZE,NUM_ADD,3))
+
+        o_leastFailAttack = np.ones(shape=(BATCH_SIZE,NUM_POINT+NUM_ADD,3))
+        o_record2D = np.ones(shape=(BATCH_SIZE, args.dim, args.dim, 1))
+
+
+
     o_failPred = [-1] * BATCH_SIZE
     o_failDist = [1e10] * BATCH_SIZE
 
     init_add_pts = get_critical_points(points_ori, args)
 
     for out_step in range(BINARY_SEARCH_STEP):
+        log_string((" Step {} of {}")
+                              .format(out_step, BINARY_SEARCH_STEP))
 
         # feed_dict[ops['dist_weight']]=WEIGHT
 
@@ -212,10 +234,17 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
         # pert = m.rsample()
 
         # pert = (torch.randn((BATCH_SIZE,NUM_POINT,3), requires_grad=True, device='cuda'))
-        pert = torch.normal(0, 0.01, size=(BATCH_SIZE,NUM_ADD,3), requires_grad=True, device='cuda')
+        # INIT_STD = 0.01
+        INIT_STD = 0.0000001
+
+        if args.normal:
+            pert = torch.normal(0, INIT_STD, size=(BATCH_SIZE,NUM_ADD,6), requires_grad=True, device='cuda')
+        else:
+            pert = torch.normal(0, INIT_STD, size=(BATCH_SIZE,NUM_ADD,3), requires_grad=True, device='cuda')
 
         # pert = torch.empty((BATCH_SIZE,NUM_POINT,3)).normal_(0, 0.01)
         # pert = pert.requires_grad_(True).cuda()
+        # import pdb; pdb.set_trace()
 
 
         optimizer = torch.optim.Adam(
@@ -268,7 +297,6 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
             classifier = classifier.train()
             pred, _ = classifier(points_cls)
             adv_loss = criterion(pred, attacked_label.long())
-            # import pdb; pdb.set_trace()
 
             #perturbation l2 constraint
             dists_chamfer = chamfer.chamfer_distance(points_add, points, batch_reduction=None)[0]
@@ -279,6 +307,7 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
             loss = adv_loss + norm_loss
             loss.backward()
             optimizer.step()
+            # import pdb; pdb.set_trace()
 
             pred_cls_np = pred.max(dim=1)[1].cpu().data.numpy()
             dists_chamfer_np = dists_chamfer.cpu().data.numpy()
@@ -303,6 +332,8 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
                     o_bestscore[e] = prd
                     o_bestattack[e] = ii
                     o_bestadd[e] = ii_add
+                    if args.model == 'lattice_cls':
+                        o_record2D[e] = _[0][e].cpu().data.numpy()
                 # kaidong mods: no success yet, prepare to record least failure
                 # only start record at the last binary step
                 if out_step == BINARY_SEARCH_STEP-1 and o_bestscore[e] != attacked_label[e] and dist < o_failDist[e]:
@@ -310,6 +341,8 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
                     o_failPred[e] = prd
                     o_leastFailAttack[e] = ii
                     o_failadd[e] = ii_add
+                    if args.model == 'lattice_cls':
+                        o_record2D[e] = _[0][e].cpu().data.numpy()
 
         # adjust the constant as needed
         for e in range(BATCH_SIZE):
@@ -326,14 +359,14 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
 
     log_string(" Successfully generated adversarial exampleson {} of {} instances." .format(sum(lower_bound > 0), BATCH_SIZE))
     
-    for e in range(BATCH_SIZE):
-        if o_bestscore[e] != attacked_label[e]:
-            o_bestscore[e] = o_failPred[e]
-            o_bestdist[e] = o_failDist[e]
-            o_bestattack[e] = o_leastFailAttack[e]
-            o_bestadd[e] = o_failadd[e]
+    # for e in range(BATCH_SIZE):
+    #     if o_bestscore[e] != attacked_label[e]:
+    #         o_bestscore[e] = o_failPred[e]
+    #         o_bestdist[e] = o_failDist[e]
+    #         o_bestattack[e] = o_leastFailAttack[e]
+    #         o_bestadd[e] = o_failadd[e]
 
-    return o_bestdist, o_bestattack, o_bestscore, o_bestadd
+    return o_bestdist, o_bestattack, o_bestscore, o_bestadd, [init_add_pts, o_failadd, o_record2D]
 
 
 
@@ -358,7 +391,7 @@ def main(args):
     checkpoints_dir.mkdir(exist_ok=True)
     # log_dir = experiment_dir.joinpath('logs/')
     # log_dir.mkdir(exist_ok=True)
-    atk_dir = experiment_dir.joinpath('attacked/')
+    atk_dir = experiment_dir.joinpath('attacked_indpts/')
     atk_dir.mkdir(exist_ok=True)
 
     '''LOG'''
@@ -385,7 +418,9 @@ def main(args):
     shutil.copy('./models/pointnet_util.py', str(experiment_dir))
 
     # classifier = MODEL.get_model(num_class,normal_channel=args.normal).cuda()
-    classifier = MODEL.get_model(num_class,normal_channel=args.normal,s=128*3).cuda()
+    classifier = MODEL.get_model(num_class,
+        normal_channel=args.normal,
+        backbone=get_backbone(args.backbone, num_class, 1), s=args.dim*3).cuda()
     
     # criterion = torch.nn.CrossEntropyLoss()
     criterion = MODEL.get_adv_loss(num_class).cuda()
@@ -417,7 +452,8 @@ def main(args):
 
     dist_list=[]
     # for victim in range(1, num_class):
-    for victim in range(num_class):
+    # for victim in range(num_class):
+    for victim in CLASS_ATTACK:
         if victim == args.target:
             continue
 
@@ -445,14 +481,19 @@ def main(args):
                 images, targets = next(batch_iterator)
 
             # images: b * num_pts * c
-            dist, img, preds, adds= attack_one_batch(classifier, criterion, images, targets, args)
+            dist, img, preds, adds, info_add = attack_one_batch(classifier, criterion, images, targets, args)
             # dist, img = attack_one_batch(classifier, criterion, images, targets, args, optimizer)
             dist_list.append(dist)
             
-            np.save(os.path.join(atk_dir, '{}_{}_{}_adv.npy' .format(victim,args.target,j)), img)
+            log_string("{}_{}_{} attacked.".format(victim,args.target,j))
+            np.save(os.path.join(atk_dir, '{}_{}_{}_indpts.npy' .format(victim,args.target,j)), adds)
+            np.save(os.path.join(atk_dir, '{}_{}_{}_indpts_f.npy' .format(victim,args.target,j)), info_add[1])
             np.save(os.path.join(atk_dir, '{}_{}_{}_orig.npy' .format(victim,args.target,j)),images)#dump originial example for comparison
+            np.save(os.path.join(atk_dir, '{}_{}_{}_indpts_orig.npy' .format(victim,args.target,j)), info_add[0])
+
             np.save(os.path.join(atk_dir, '{}_{}_{}_pred.npy' .format(victim,args.target,j)),preds)
-            np.save(os.path.join(atk_dir, '{}_{}_{}_add.npy' .format(victim,args.target,j)),adds)
+            if args.model == 'lattice_cls':
+                np.save(os.path.join(atk_dir, '{}_{}_{}_2dimg.npy' .format(victim,args.target,j)),info_add[2])
             
 
 if __name__ == '__main__':
@@ -461,7 +502,7 @@ if __name__ == '__main__':
     timestr = str(datetime.datetime.now().strftime('%Y-%m-%d_%H-%M'))
     experiment_dir = Path('./log/')
     experiment_dir.mkdir(exist_ok=True)
-    experiment_dir = experiment_dir.joinpath('independent')
+    experiment_dir = experiment_dir.joinpath('attacks')
     experiment_dir.mkdir(exist_ok=True)
     if args.log_dir is None:
         experiment_dir = experiment_dir.joinpath(timestr)
@@ -475,7 +516,7 @@ if __name__ == '__main__':
     logger = logging.getLogger("Model")
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    file_handler = logging.FileHandler('%s/%s.txt' % (log_dir, args.model))
+    file_handler = logging.FileHandler('%s/%s_indpts.txt' % (log_dir, args.model))
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
