@@ -63,7 +63,7 @@ class AttackModelNetLoader(Dataset):
         # list of (shape_name, shape_txt_file_path) tuple
         self.datapath = [os.path.join(self.root, self.cat[victim], shape_ids[split][i]) + '.txt' for i
                          in range(len(shape_ids[split]))]
-        print('The size of %s %s data is %d'%(split, self.cat[victim], len(self.datapath)))
+        print('The size of %s [%d]%s data is %d'%(split, victim, self.cat[victim], len(self.datapath)))
 
         self.cache_size = cache_size  # how many data points to cache in memory
         self.cache = {}  # from index to (point_set, cls) tuple

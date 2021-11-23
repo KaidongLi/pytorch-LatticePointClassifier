@@ -250,5 +250,57 @@ def random_point_dropout(batch_pc, max_dropout_ratio=0.875):
             batch_pc[b,drop_idx,:] = batch_pc[b,0,:] # set to the first point
     return batch_pc
 
+def random_rotate_pc_3axis(batch_data):
+    B = batch_data.size(0)
+    rot = np.random.uniform(-np.pi, np.pi, (B,3))
+    return rotate_pc_3axis(batch_data, rot)
 
+def rotate_pc_3axis(point_cloud,rotations):
+    import torch
 
+    rotations = torch.from_numpy(rotations).float().cuda()
+    rotations.requires_grad = False
+
+    batch_size = point_cloud.size(0)
+    assert rotations.size(1) == 3
+    rotated_list=[]
+    one=torch.tensor(1.).float().cuda().detach()
+    zero=torch.tensor(0.).float().cuda().detach()
+    #print(zero.get_shape())
+
+    rotated_pc = torch.zeros_like(point_cloud)
+    for i in range(batch_size):
+        # for j in range(num_cluster):
+            x=rotations[i,0]
+            y=rotations[i,1]
+            z=rotations[i,2]
+            cosz = torch.cos(z)
+            sinz = torch.sin(z)
+            #print(cosz.get_shape())
+            # import pdb; pdb.set_trace()
+            Mz=torch.stack([
+                    cosz, -sinz, zero,
+                    sinz, cosz, zero,
+                    zero, zero, one
+            ], dim=-1).view(3, 3)
+            Mz=torch.squeeze(Mz)
+            cosy = torch.cos(y)
+            siny = torch.sin(y)
+            # import pdb; pdb.set_trace()
+            My=torch.stack([
+                    cosy, zero, siny,
+                    zero, one,zero,
+                    -siny, zero, cosy
+            ], dim=-1).view(3, 3)
+            My=torch.squeeze(My)
+            cosx = torch.cos(x)
+            sinx = torch.sin(x)
+            Mx=torch.stack([
+                    one,zero, zero,
+                    zero, cosx, -sinx,
+                    zero, sinx, cosx
+            ], dim=-1).view(3, 3)
+            Mx=torch.squeeze(Mx)
+            rotate_mat=torch.matmul(Mx,torch.matmul(My,Mz))
+            rotated_pc[i] = torch.matmul(point_cloud[i],rotate_mat)
+    return rotated_pc

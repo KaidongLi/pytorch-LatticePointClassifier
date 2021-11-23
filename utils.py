@@ -205,14 +205,17 @@ def get_backbone(backbone, num_cls=100, c=1, use_gpu=True):
         net = resnet50(num_cls, c)
     elif backbone == 'efficientnet-b3':
         from efficientnet_pytorch import EfficientNet
-        net = EfficientNet.from_pretrained('efficientnet-b3', advprop=True, num_classes=num_cls, in_channels=1)   
+        net = EfficientNet.from_pretrained('efficientnet-b3', advprop=True, num_classes=num_cls, in_channels=c)
     elif backbone == 'efficientnet-b5':
         from efficientnet_pytorch import EfficientNet
-        net = EfficientNet.from_pretrained('efficientnet-b5', advprop=True, num_classes=num_cls, in_channels=1)
-        # net = EfficientNet.from_name('efficientnet-b5', num_classes=num_cls, in_channels=1) #advprop=True, 
+        net = EfficientNet.from_pretrained('efficientnet-b5', advprop=True, num_classes=num_cls, in_channels=c)
+        # net = EfficientNet.from_name('efficientnet-b5', num_classes=num_cls, in_channels=1) #advprop=True,
+    elif backbone == 'efficientnet-b7':
+        from efficientnet_pytorch import EfficientNet
+        net = EfficientNet.from_pretrained('efficientnet-b7', advprop=True, num_classes=num_cls, in_channels=c)
     elif backbone == 'efficientnet-b8':
         from efficientnet_pytorch import EfficientNet
-        net = EfficientNet.from_pretrained('efficientnet-b8', advprop=True, num_classes=num_cls, in_channels=1)
+        net = EfficientNet.from_pretrained('efficientnet-b8', advprop=True, num_classes=num_cls, in_channels=c)
     # elif backbone == 'resnet101':
     #     from models.resnet import resnet101
     #     net = resnet101()

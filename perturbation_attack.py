@@ -4,6 +4,7 @@ Date: Nov 2019
 """
 from data_utils.ModelNetDataLoader import ModelNetDataLoader
 from data_utils.AttackModelNetLoader import AttackModelNetLoader
+from data_utils.AttackScanNetLoader import AttackScanNetLoader
 import argparse
 import numpy as np
 import os
@@ -33,7 +34,8 @@ SCALE_UP  = 32
 # SCALE_LOW = 150
 # SCALE_UP  = 192
 
-CLASS_ATTACK = [0, 2, 4, 8, 22, 25, 30, 33, 35, 37]
+# CLASS_ATTACK = [0, 2, 4, 8, 22, 25, 30, 33, 35, 37]
+CLASS_ATTACK = [0, 2, 4, 5, 8, 22, 30, 33, 35, 37]
 
 def log_string(str):
     logger.info(str)
@@ -55,7 +57,12 @@ def parse_args():
     parser.add_argument('--log_dir', type=str, default=None, help='experiment root')
     parser.add_argument('--decay_rate', type=float, default=1e-4, help='decay rate [default: 1e-4]')
     parser.add_argument('--normal', action='store_true', default=False, help='Whether to use normal information [default: False]')
-    
+    parser.add_argument('--num_sample', type=int, default=25, help='number of samples per class [default: 25]')
+    parser.add_argument('--file_affix', type=str, default='', help='log file/save folder affix')
+    parser.add_argument('--dataset', default='ModelNet40', help='dataset name [default: ModelNet40]')
+    parser.add_argument('--num_cls', type=int, default=40, help='Number of classes [default: 40]')
+
+
     parser.add_argument('--target', type=int, default=5, help='target class index')
     parser.add_argument('--initial_weight', type=float, default=10, help='initial value for the parameter lambda')
     parser.add_argument('--upper_bound_weight', type=float, default=80, help='upper_bound value for the parameter lambda')
@@ -64,7 +71,7 @@ def parse_args():
 
     parser.add_argument('--backbone', default='resnet50', help='backbone network name [default: resnet50]')
     parser.add_argument('--dim', type=int, default=128, help='size of final 2d image [default: 128]')
-    
+
 
     return parser.parse_args()
 
@@ -121,12 +128,12 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
     upper_bound=np.ones(BATCH_SIZE) * UPPER_BOUND_WEIGHT
 
 
-    # o_bestdist:   starting with norm 1e10, 
+    # o_bestdist:   starting with norm 1e10,
     #               recording lowest norm of successful perturbation
     # o_bestscore:  starting with -1,
     #               recording the successful attacked label
     # o_bestattack: starting with 1s,
-    #               
+    #
     o_bestdist = [1e10] * BATCH_SIZE
     o_bestscore = [-1] * BATCH_SIZE
     if args.normal:
@@ -142,7 +149,11 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
 
 
     o_failPred = [-1] * BATCH_SIZE
-    o_failDist = [1e10] * BATCH_SIZE
+    o_failDist = [0] * BATCH_SIZE
+
+    train_timer = []
+    b_step = [-1] * BATCH_SIZE
+    b_iter = [-1] * BATCH_SIZE
 
     for out_step in range(BINARY_SEARCH_STEP):
         log_string((" Step {} of {}")
@@ -164,8 +175,8 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
         # pert = m.rsample()
 
         # pert = (torch.randn((BATCH_SIZE,NUM_POINT,3), requires_grad=True, device='cuda'))
-        # INIT_STD = 1e-7
-        INIT_STD = 0.1
+        INIT_STD = 1e-7
+        # INIT_STD = 0.1
 
         if args.normal:
             pert = torch.normal(0, INIT_STD, size=(BATCH_SIZE,NUM_POINT,6), requires_grad=True, device='cuda')
@@ -173,7 +184,7 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
             pert = torch.normal(0, INIT_STD, size=(BATCH_SIZE,NUM_POINT,3), requires_grad=True, device='cuda')
 
         # pert = torch.normal(0, 0.1, size=(BATCH_SIZE,NUM_POINT,3), requires_grad=True, device='cuda')
-            
+
         # import pdb; pdb.set_trace()
 
 
@@ -189,16 +200,16 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
             eps=1e-08,
             weight_decay=args.decay_rate
         )
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.7)
+        # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.7)
 
         # sess.run(tf.assign(ops['pert'],tf.truncated_normal([BATCH_SIZE,NUM_POINT,3], mean=0, stddev=0.0000001)))
 
-        # bestdist: starting with norm 1e10, 
+        # bestdist: starting with norm 1e10,
         # 			recording lowest norm of successful perturbation
         # bestscore: starting with -1
         #            recording the successful attacked label
         bestdist = [1e10] * BATCH_SIZE
-        bestscore = [-1] * BATCH_SIZE  
+        bestscore = [-1] * BATCH_SIZE
 
         prev = 1e6
 
@@ -225,10 +236,13 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
             points_cls = points.transpose(2, 1)
             points_cls, attacked_label = points_cls.cuda(), attacked_label.cuda()
 
-            
+
             optimizer.zero_grad()
 
-            classifier = classifier.train()
+            # classifier = classifier.train()
+
+            st = datetime.datetime.now().timestamp()
+
             pred, _ = classifier(points_cls)
             adv_loss = criterion(pred, attacked_label.long())
 
@@ -240,6 +254,9 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
             loss = adv_loss + norm_loss
             loss.backward()
             optimizer.step()
+
+            st = datetime.datetime.now().timestamp() - st
+            train_timer.append(st)
 
             # import pdb; pdb.set_trace()
 
@@ -267,9 +284,14 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
                     o_bestattack[e] = ii
                     if args.model == 'lattice_cls':
                         o_record2D[e] = _[0][e].cpu().data.numpy()
+
+
+                    if b_step[e] == -1:
+                        b_step[e] = out_step
+                        b_iter[e] = iteration
                 # kaidong mods: no success yet, prepare to record least failure
                 # only start record at the last binary step
-                if out_step == BINARY_SEARCH_STEP-1 and o_bestscore[e] != attacked_label[e] and dist < o_failDist[e]:
+                if out_step == BINARY_SEARCH_STEP-1 and o_bestscore[e] != attacked_label[e] and dist > o_failDist[e]:
                     o_failDist[e] = dist
                     o_failPred[e] = prd
                     o_leastFailAttack[e] = ii
@@ -288,11 +310,12 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
                 upper_bound[e] = min(upper_bound[e], WEIGHT[e])
                 WEIGHT[e] = (lower_bound[e] + upper_bound[e]) / 2
 
-                # kaidong 
+                # kaidong
         #bestdist_prev=deepcopy(bestdist)
 
     log_string(" Successfully generated adversarial exampleson {} of {} instances." .format(sum(lower_bound > 0), BATCH_SIZE))
-    
+    log_string(' Best res on step %s iter %s. Train Mean Time: %fms, batch size: %d'% (str(b_step), str(b_iter), sum(train_timer)/len(train_timer), BATCH_SIZE))
+
     # for e in range(BATCH_SIZE):
     #     if o_bestscore[e] != attacked_label[e]:
     #         o_bestscore[e] = o_failPred[e]
@@ -308,6 +331,7 @@ def main(args):
 
     '''HYPER PARAMETER'''
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
+    global CLASS_ATTACK
 
     '''CREATE DIR'''
     # timestr = str(datetime.datetime.now().strftime('%Y-%m-%d_%H-%M'))
@@ -324,7 +348,7 @@ def main(args):
     checkpoints_dir.mkdir(exist_ok=True)
     # log_dir = experiment_dir.joinpath('logs/')
     # log_dir.mkdir(exist_ok=True)
-    atk_dir = experiment_dir.joinpath('attacked/')
+    atk_dir = experiment_dir.joinpath('attacked%s/' % (args.file_affix))
     atk_dir.mkdir(exist_ok=True)
 
     '''LOG'''
@@ -341,10 +365,10 @@ def main(args):
 
     '''DATA LOADING'''
     log_string('Load dataset ...')
-    DATA_PATH = 'data/modelnet40_normal_resampled/'
+    # DATA_PATH = 'data/modelnet40_normal_resampled/'
 
     '''MODEL LOADING'''
-    num_class = 40
+    num_class = args.num_cls
     # num_class = 100
     MODEL = importlib.import_module(args.model)
     shutil.copy('./models/%s.py' % args.model, str(experiment_dir))
@@ -352,10 +376,29 @@ def main(args):
 
     # classifier = MODEL.get_model(num_class,normal_channel=args.normal).cuda()
     # classifier = MODEL.get_model(num_class,normal_channel=args.normal,s=128*3).cuda()
-    classifier = MODEL.get_model(num_class,
-        normal_channel=args.normal, 
-        backbone=get_backbone(args.backbone, num_class, 1), s=args.dim*3).cuda()
-    
+
+
+    if args.model == 'lattice_cls':
+        classifier = MODEL.get_model(num_class,
+            normal_channel=args.normal,
+            backbone=get_backbone(args.backbone, num_class, 1), s=args.dim*3).cuda()
+    elif args.model == 'pointnet_ddn':
+        print('using ddn')
+        dnn_conf = {
+            'input_transform': False,
+            'feature_transform': False,
+            'robust_type': 'W',
+            'alpha': 1.0
+        }
+        classifier = MODEL.get_model(
+                        num_class, dnn_conf['input_transform'], 
+                        dnn_conf['feature_transform'], 
+                        dnn_conf['robust_type'], 
+                        dnn_conf['alpha']
+                    ).cuda()
+    else:
+        classifier = MODEL.get_model(num_class,normal_channel=args.normal).cuda()
+
     # criterion = torch.nn.CrossEntropyLoss()
     criterion = MODEL.get_adv_loss(num_class).cuda()
 
@@ -368,10 +411,7 @@ def main(args):
         log_string('No existing model, starting training from scratch...')
         start_epoch = 0
 
-
-    # TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
-    #                                                 normal_channel=args.normal)
-    # testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
+    classifier = classifier.eval()
 
     # # kaidong debug test
     # with torch.no_grad():
@@ -386,6 +426,9 @@ def main(args):
 
     dist_list=[]
 
+    if args.dataset == 'ScanNetCls':
+        CLASS_ATTACK = [0, 4, 5, 6, 8, 12, 16]
+
     # lg_class = 0
     # for victim in range(1, num_class):
     # for victim in range(num_class):
@@ -393,16 +436,22 @@ def main(args):
         if victim == args.target:
             continue
 
-        # TRAIN_DATASET = AttackModelNetLoader(root=DATA_PATH, npoint=args.num_point, split='train',
-        #                                              normal_channel=args.normal, victim=victim, target=args.target)
-        TEST_DATASET = AttackModelNetLoader(root=DATA_PATH, npoint=args.num_point, split='test',
-                                                        normal_channel=args.normal, victim=victim, target=args.target)
-
-        # skip classes with small amount of examples
-        if len(TEST_DATASET) < 100:
-            continue
-        # else:
-        #     lg_class += 1
+        if args.dataset == 'ModelNet40':
+            DATA_PATH = '/dev/shm/data/modelnet40/'
+            # DATA_PATH = 'data/modelnet40_normal_resampled/'
+            # TRAIN_DATASET = AttackModelNetLoader(root=DATA_PATH, npoint=args.num_point, split='train',
+            #                                              normal_channel=args.normal, victim=victim, target=args.target)
+            TEST_DATASET = AttackModelNetLoader(root=DATA_PATH, npoint=args.num_point, split='test',
+                                                            normal_channel=args.normal, victim=victim, target=args.target)
+        elif args.dataset == 'ScanNetCls':
+            # TRAIN_PATH = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/train_files.txt'
+            TEST_PATH  = 'dump/scannet_test_data8316.npz'
+            # TEST_PATH  = '/dev/shm/data/scannet/test_files.txt'
+            # TEST_PATH  = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/test_files.txt'
+            # TRAIN_DATASET = ScanNetDataLoader(TRAIN_PATH, npoint=args.num_point, split='train',
+            #                                                  normal_channel=args.normal)
+            TEST_DATASET = AttackScanNetLoader(TEST_PATH, npoint=args.num_point, split='test',
+                                                            normal_channel=args.normal, victim=victim, target=args.target)
 
         # trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
         testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
@@ -411,7 +460,7 @@ def main(args):
 
         batch_iterator = iter(testDataLoader)
 
-        for j in range(25//args.batch_size):
+        for j in range(args.num_sample//args.batch_size):
             try:
                 images, targets = next(batch_iterator)
             except StopIteration:
@@ -433,7 +482,7 @@ def main(args):
                 np.save(os.path.join(atk_dir, '{}_{}_{}_2dimg.npy' .format(victim,args.target,j)), img_2d)
 
     # print('class num: ', num_class, ', class with enough images: ', lg_class)
-            
+
 
 if __name__ == '__main__':
     args = parse_args()
@@ -455,7 +504,7 @@ if __name__ == '__main__':
     logger = logging.getLogger("Model")
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    file_handler = logging.FileHandler('%s/%s.txt' % (log_dir, args.model))
+    file_handler = logging.FileHandler('%s/%s_pert%s.txt' % (log_dir, args.model, args.file_affix))
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)

@@ -37,7 +37,8 @@ class SparseSum(torch.autograd.Function):
 
         grad_values = None
         if ctx.needs_input_grad[1]:
-            grad_values = grad_output[indices.squeeze(0), :]
+            grad_values = grad_output[indices[0, :], indices[1,:], :]
+            # grad_values = grad_output[indices.squeeze(0), :]
 
         return None, grad_values, None, None
 
@@ -88,7 +89,7 @@ class get_model(nn.Module):
 
         # B, D, N = x.size()
         # trans = self.pnt_tnet(x)
-        
+
         # x = x.transpose(2, 1)
         # if D >3 :
         #     x, feature = x.split(3,dim=2)
@@ -112,6 +113,8 @@ class get_model(nn.Module):
         splatted_2d = splatted_2d.permute(0, 3, 1, 2).contiguous()
 
         # splatted_2d = x
+        import datetime
+        st = datetime.datetime.now().timestamp()
 
         # network takes [b, c, size, size]
         outputs = self.network_2d(splatted_2d)
@@ -120,7 +123,7 @@ class get_model(nn.Module):
 
 
 
-        return outputs, [_[0]]#[_[0].permute(0, 3, 1, 2), splatted_2d, _[1]]
+        return outputs, [_[0], _[1]]#[_[0].permute(0, 3, 1, 2), splatted_2d, _[1], st]
 
 
 
@@ -291,9 +294,10 @@ class LatticeGen(nn.Module):
         barycentric[batch_indices, 0, point_indices] += 1. + barycentric[batch_indices, self.d1, point_indices]
         barycentric = barycentric[:, :-1, :]
 
+        # import pdb; pdb.set_trace()
 
         # canonical[rank, :]: [d1, num_pts, d1]
-        #                     (d1 dim coordinates) then (d1 vertices of a simplex) 
+        #                     (d1 dim coordinates) then (d1 vertices of a simplex)
         keys = greedy[:, :, :, None] + self.canonical[rank, :]  # (d1, num_points, d1)
         # rank: rearrange the coordinates of the canonical
 
@@ -329,24 +333,26 @@ class LatticeGen(nn.Module):
 
         splatted_2d = torch.zeros((batch_size, self.size2d, self.size2d, c), dtype=torch.float32).cuda()
         filter_2d = torch.zeros((batch_size, self.size2d//self.d1, self.size2d//self.d1, c), dtype=torch.float32).cuda()
-        
+
         for i in range(batch_size):
             # coord: [d, d * num]
             # d: d-coordinate; d * num: vertices of simplex * number of points
             # in_barycentric: [batch, d, num]
             # d: 0- 1- 2- 3-... remainder points
-            # splatted = sparse_sum(coord, in_barycentric.view(-1), 
+            # splatted = sparse_sum(coord, in_barycentric.view(-1),
             #                       None, args.DEVICE == 'cuda')
 
-            # splatted_2d[i] = sparse_sum(coord[i], tmp[i], 
-            #                       torch.Size([self.size2d, self.size2d, 3]), True)
-            splatted_2d[i] = torch.cuda.sparse.FloatTensor(coord[i], tmp[i], 
+            # splatted_2d[i] = sparse_sum(coord[i], tmp[i],
+            #                       torch.Size([self.size2d, self.size2d, c]), True)
+            splatted_2d[i] = torch.cuda.sparse.FloatTensor(coord[i], tmp[i],
                                   torch.Size([self.size2d, self.size2d, c])).to_dense()
             # import pdb; pdb.set_trace()
             filter_2d[i] = splatted_2d[i, pts_pick[i, 0]::self.d1, pts_pick[i, 1]::self.d1][:self.size2d//self.d1, :self.size2d//self.d1]
 
-        if not self.normal_channel:
-            filter_2d[filter_2d>0] = 1.0
+        # if not self.normal_channel:
+        #     # cutoff = filter_2d[filter_2d>0].mean() * 2
+        #     # filter_2d[filter_2d>cutoff] = cutoff
+        #     filter_2d[filter_2d>0] = 1.0
 
         # kaidong test
         # import pdb; pdb.set_trace()
@@ -387,7 +393,7 @@ class LatticeGen(nn.Module):
             # d * num_pts: [d] + [d] + ... + [d]
             cc = tmp.size(1)
             tmp = tmp.permute(0, 1, 3, 2).contiguous().view(batch_size, cc, -1).permute(0, 2, 1)
-            
+
             filter_2d = self.get2D(coord, tmp, pts_pick, batch_size)
 
 
@@ -403,12 +409,12 @@ class LatticeGen(nn.Module):
             # # tmp: [d, d * num]
             # # d * num_pts: [d] + [d] + ... + [d]
             # tmp = tmp.permute(0, 1, 3, 2).contiguous().view(batch_size, 3, -1).permute(0, 2, 1)
-            
+
             # filter_2d_2 = self.get2D(coord, tmp, pts_pick, batch_size)
 
 
-            
-            return filter_2d, None, [filter_2d]#[splatted_2d, keys.view(batch_size, 3, -1)]
+
+            return filter_2d, None, [filter_2d, keys.view(batch_size, 3, -1)]
         # return filter_2d, filter_2d_2, [filter_2d]#[splatted_2d, keys.view(batch_size, 3, -1)]
 
 
@@ -443,8 +449,8 @@ class RotatePCA(nn.Module):
             cos_rot = (vec_low * trans_norm).sum(dim=1)
 
             # Rodrigues' rotation formula
-            rot_pts = pc1 * cos_rot[:, None, None] 
-            rot_pts += torch.cross(rot_axis[:, :, None].expand(pc1.shape), pc1) * sin_rot[:, None, None] 
+            rot_pts = pc1 * cos_rot[:, None, None]
+            rot_pts += torch.cross(rot_axis[:, :, None].expand(pc1.shape), pc1) * sin_rot[:, None, None]
             rot_pts += rot_axis[:, :, None] * (rot_axis[:, :, None] * pc1).sum(dim=1, keepdim=True) * (1 - cos_rot)[:, None, None]
 
             # y = rot_pts.permute(0, 2, 1)
@@ -457,4 +463,3 @@ class RotatePCA(nn.Module):
     #     format_string = self.__class__.__name__ + '\n(scales_filter_map: {}\n'.format(self.scales_filter_map)
     #     format_string += ')'
     #     return format_string
-

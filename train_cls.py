@@ -4,6 +4,7 @@ Date: Nov 2019
 """
 from data_utils.ModelNetDataLoader import ModelNetDataLoader
 from data_utils.PCAModelNetDataLoader import PCAModelNetDataLoader
+from data_utils.ScanNetDataLoader import ScanNetDataLoader
 import argparse
 import numpy as np
 import os
@@ -49,19 +50,23 @@ def parse_args():
     parser.add_argument('--normal', action='store_true', default=False, help='Whether to use normal information [default: False]')
     parser.add_argument('--pca', action='store_true', default=False, help='Whether to use PCA to rotate data [default: False]')
     parser.add_argument('--dim', type=int, default=128, help='size of final 2d image [default: 128]')
+    parser.add_argument('--dataset', default='ModelNet40', help='dataset name [default: ModelNet40]')
+    parser.add_argument('--num_cls', type=int, default=40, help='Number of classes [default: 40]')
     return parser.parse_args()
 
 def test(model, loader, num_class=40):
     mean_correct = []
-    class_acc = np.zeros((num_class,3))
+    class_acc = np.zeros((num_class,5))
     for j, data in tqdm(enumerate(loader), total=len(loader)):
         points, target = data
         target = target[:, 0]
         points = points.transpose(2, 1)
         points, target = points.cuda(), target.cuda()
         classifier = model.eval()
+        # timer
         pred, _ = classifier(points)
         pred_choice = pred.data.max(1)[1]
+        # timer ends
         for cat in np.unique(target.cpu()):
 
             # kaidong mod: resolve tensor cannot be (target==cat) eq() to a numpy bug
@@ -70,10 +75,17 @@ def test(model, loader, num_class=40):
             classacc = pred_choice[target==cat].eq(target[target==cat].long().data).cpu().sum()
             class_acc[cat,0]+= classacc.item()/float(points[target==cat].size()[0])
             class_acc[cat,1]+=1
+            class_acc[cat,3]+=classacc.item()
+            class_acc[cat,4]+=[target==cat][0].cpu().sum().item()
+
         correct = pred_choice.eq(target.long().data).cpu().sum()
         mean_correct.append(correct.item()/float(points.size()[0]))
-    class_acc[:,2] =  class_acc[:,0]/ class_acc[:,1]
-    class_acc = np.mean(class_acc[:,2])
+    class_acc[:,2] = class_acc[:, 3]/(class_acc[:,4]+1e-08)
+    # class_acc[:,2] =  class_acc[:,0]/ (class_acc[:,1]+1e-08)
+    # import pdb; pdb.set_trace()
+    class_acc = np.mean(class_acc[class_acc[:,4]!=0,2])
+    # class_acc = np.mean(class_acc[class_acc[:,1]!=0,2])
+    # class_acc = np.mean(class_acc[:,2].nonzero())
     instance_acc = np.mean(mean_correct)
     return instance_acc, class_acc
 
@@ -104,6 +116,8 @@ def main(args):
     checkpoints_dir.mkdir(exist_ok=True)
     log_dir = experiment_dir.joinpath('logs/')
     log_dir.mkdir(exist_ok=True)
+    vis_dir = experiment_dir.joinpath('visual/')
+    vis_dir.mkdir(exist_ok=True)
 
     '''LOG'''
     args = parse_args()
@@ -119,18 +133,33 @@ def main(args):
 
     '''DATA LOADING'''
     log_string('Load dataset ...')
-    DATA_PATH = 'data/modelnet40_normal_resampled/'
 
-    if args.pca:
-        TRAIN_DATASET = PCAModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='train',
-                                                    normal_channel=args.normal)
-        TEST_DATASET = PCAModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
+    if args.dataset == 'ModelNet40':
+        DATA_PATH = 'data/modelnet40_normal_resampled/'
+
+        if args.pca:
+            TRAIN_DATASET = PCAModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='train',
                                                         normal_channel=args.normal)
-    else:
-        TRAIN_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='train',
+            TEST_DATASET = PCAModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
+                                                            normal_channel=args.normal)
+        else:
+            TRAIN_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='train',
+                                                             normal_channel=args.normal)
+            TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
+                                                            normal_channel=args.normal)
+    elif args.dataset == 'ScanNetCls':
+        assert (not args.pca), 'ScanNetCls with PCA is not supported yet'
+
+        TRAIN_PATH = '/dev/shm/data/scannet/train_files.txt'
+        # TRAIN_PATH = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/train_files.txt'
+        TEST_PATH  = 'dump/scannet_test_data8316.npz'
+        # TEST_PATH  = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/test_files.txt'
+        TRAIN_DATASET = ScanNetDataLoader(TRAIN_PATH, npoint=args.num_point, split='train',
                                                          normal_channel=args.normal)
-        TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
-                                                        normal_channel=args.normal)
+        TEST_DATASET = ScanNetDataLoader(TEST_PATH, npoint=args.num_point, split='test',
+                                                            normal_channel=args.normal)
+
+
 
 
 
@@ -151,31 +180,83 @@ def main(args):
     # )
 
     '''MODEL LOADING'''
-    num_class = 40
+    num_class = args.num_cls
     # num_class = 100
     MODEL = importlib.import_module(args.model)
     shutil.copy('./models/%s.py' % args.model, str(experiment_dir))
     shutil.copy('./models/pointnet_util.py', str(experiment_dir))
 
-    # classifier = MODEL.get_model(num_class,normal_channel=args.normal,s=128*3).cuda()
-    # classifier = MODEL.get_model(num_class,
-    #     normal_channel=args.normal, 
-    #     backbone=get_backbone(args.backbone, num_class, 1)).cuda()
-    classifier = MODEL.get_model(num_class,
-        normal_channel=args.normal, 
-        backbone=get_backbone(args.backbone, num_class, 1), s=args.dim*3).cuda()
-    
+
     criterion = torch.nn.CrossEntropyLoss()
     # criterion = MODEL.get_loss().cuda()
+
+    if args.model == 'lattice_cls':
+        classifier = MODEL.get_model(num_class,
+            normal_channel=args.normal,
+            backbone=get_backbone(args.backbone, num_class, 1), s=args.dim*3).cuda()
+    elif args.model == 'pointnet_cls':
+        classifier = MODEL.get_model(num_class,normal_channel=args.normal).cuda()
+    elif args.model == 'lattice_cls_2ch':
+        classifier = MODEL.get_model(num_class,
+            normal_channel=args.normal,
+            backbone=get_backbone(args.backbone, num_class, 2), s=args.dim*3).cuda()
+    elif args.model == 'pointnet_ddn':
+        dnn_conf = {
+            'input_transform': False,
+            'feature_transform': False,
+            'robust_type': 'W',
+            'alpha': 1.0
+        }
+        classifier = MODEL.get_model(
+                        num_class, dnn_conf['input_transform'], 
+                        dnn_conf['feature_transform'], 
+                        dnn_conf['robust_type'], 
+                        dnn_conf['alpha']
+                    ).cuda()
+        criterion = torch.nn.NLLLoss()
+    # classifier = MODEL.get_model(num_class,
+    #     normal_channel=args.normal,
+    #     backbone=get_backbone(args.backbone, num_class, 1)).cuda()
+
+
+
+    best_instance_acc = 0.0
+    best_class_acc = 0.0
+
 
     try:
         checkpoint = torch.load(str(experiment_dir) + '/checkpoints/best_model.pth')
         start_epoch = checkpoint['epoch']
         classifier.load_state_dict(checkpoint['model_state_dict'])
-        log_string('Use pretrain model')
+        log_string('Use saved model')
+
+        with torch.no_grad():
+            instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class)
+
+            best_instance_acc = instance_acc
+            best_class_acc = class_acc
+
+            log_string('Load Instance Accuracy: %f, Class Accuracy: %f'% (instance_acc, class_acc))
+
     except:
-        log_string('No existing model, starting training from scratch...')
+        log_string('No saved model, checking pretrain...')
         start_epoch = 0
+
+        try:
+            checkpoint = torch.load(str(experiment_dir) + '/checkpoints/pretrain.pth')
+            classifier.load_state_dict(checkpoint['model_state_dict'])
+            log_string('Use pretrain model')
+
+            with torch.no_grad():
+                instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class)
+
+                best_instance_acc = instance_acc
+                best_class_acc = class_acc
+
+                log_string('Load Instance Accuracy: %f, Class Accuracy: %f'% (instance_acc, class_acc))
+
+        except:
+            log_string('No existing model, start from scratch')
 
 
     if args.optimizer == 'Adam':
@@ -192,8 +273,6 @@ def main(args):
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.7)
     global_epoch = 0
     global_step = 0
-    best_instance_acc = 0.0
-    best_class_acc = 0.0
     mean_correct = []
 
     '''TRANING'''
@@ -224,9 +303,25 @@ def main(args):
             points[:,:, 0:3] = provider.random_scale_point_cloud(points[:,:, 0:3], 0.8, 1.)
             # if points.max() >= SCALE_UP or points.min() <= -SCALE_UP:
             #     print('...')
+            points[:,:, 0:3] = provider.shift_point_cloud(points[:,:, 0:3])
 
-            # points[:,:, 0:3] = provider.shift_point_cloud(points[:,:, 0:3])
-            points = torch.Tensor(points)
+            points = torch.Tensor(points).cuda()
+
+            # import pdb; pdb.set_trace()
+            #
+            # np.save(os.path.join(vis_dir, 'pc_'+str(global_step)+'_bf_rot'),
+            #     points.cpu().data.numpy()
+            # )
+
+            points[:,:,:3] = provider.random_rotate_pc_3axis(points[:,:,:3])
+            points = points.cpu()
+
+            # np.save(os.path.join(vis_dir, 'pc_'+str(global_step)+'_orig'),
+            #     points.data.numpy()
+            # )
+
+
+
             target = target[:, 0]
 
             points = points.transpose(2, 1)
@@ -236,6 +331,7 @@ def main(args):
             optimizer.zero_grad()
 
             classifier = classifier.train()
+            torch.autograd.set_detect_anomaly(True)
 
             pred, _ = classifier(points)
             loss = criterion(pred, target.long())
@@ -245,12 +341,20 @@ def main(args):
                 pbar.set_description("Loss: %f" % loss)
 
 
+            if loss.isnan():
+                aaa = 10
+                import pdb; pdb.set_trace()
+                for name, param in classifier.named_parameters():
+                    if param.requires_grad and (param.data>aaa).sum()>0:
+                        print(name, param.data)
+
+
             # aa, bb, cc = torch.pca_lowrank(points.transpose(2, 1))
 
             # kaidong test
             # import pdb; pdb.set_trace()
 
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_orig'),
+            # np.save(os.path.join(vis_dir, 'pc_'+str(global_step)+'_orig'),
             #     # points.permute(0, 2, 3, 1).cpu().data.numpy()
             #     points.permute(0, 2, 1).cpu().data.numpy()
             #     # points.cpu().data.numpy()
@@ -262,9 +366,9 @@ def main(args):
             #     bb.cpu().data.numpy()
             # )
 
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_rot'),
+            # np.save(os.path.join(vis_dir, 'pc_'+str(global_step)+'_rot'),
             #     # points.permute(0, 2, 3, 1).cpu().data.numpy()
-            #     rot_pts.permute(0, 2, 1).cpu().data.numpy()
+            #     _[1].permute(0, 2, 1).cpu().data.numpy()
             #     # points.cpu().data.numpy()
             # )
             # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_rot_veceigen'),
@@ -273,10 +377,10 @@ def main(args):
             # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_rot_valeigen'),
             #     bbb.cpu().data.numpy()
             # )
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_3dlat'),
-            #     _[2].cpu().data.numpy()
+            # np.save(os.path.join(vis_dir, 'pc_'+str(global_step)+'_3dlat'),
+            #     _[1].permute(0, 2, 1).cpu().data.numpy()
             # )
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_2dimg'),
+            # np.save(os.path.join(vis_dir, 'pc_'+str(global_step)+'_2dimg'),
             #     # _[0].permute(0, 2, 3, 1).cpu().data.numpy()
             #     _[0].cpu().data.numpy()
             # )
@@ -287,7 +391,7 @@ def main(args):
 
 
             # # kaidong test
-            
+
             # pred, trans_feat = classifier(points)
             # loss = criterion(pred, target.long(), trans_feat)
 

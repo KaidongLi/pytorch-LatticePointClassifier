@@ -68,6 +68,7 @@ def parse_args():
     parser.add_argument('--upper_bound_weight', type=float, default=80, help='upper_bound value for the parameter lambda')
     parser.add_argument('--step', type=int, default=10, help='binary search step')
     parser.add_argument('--num_iter', type=int, default=500, help='number of iterations for each binary search step')
+    parser.add_argument('--obj_root', type=str, default='data/airplane.npy')
 
     # for init points
     parser.add_argument('--init_pt_batch', type=int, default=8, help='batch size in initial point generation [default: 8]')
@@ -169,7 +170,99 @@ def get_critical_points_simple(data, args):
     # critical_points=np.stack(critical_points)
     return critical_points
 
-def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, optimizer=None):
+def pick_scale_object(sh,num_point,scale):
+    def normalize(data,scale):
+        center=(np.max(data,axis=0)+np.min(data,axis=0))/2
+        data=data - np.expand_dims(center,axis=0)
+        norm = np.linalg.norm(data,axis=1)
+        radius=np.max(norm)
+        data=data/radius
+        data=data*scale
+        return data
+    sh=normalize(sh,scale)
+    if sh.shape[0] > num_point:
+        np.random.shuffle(sh)
+        sh=sh[:num_point]
+    return sh
+
+def rotate_shift(sh, rotate, center, pert):
+    # import pdb; pdb.set_trace()
+    sh_rot = rotate_pc(sh, rotate)
+    sh_mv = sh + center[None, :, None, :].repeat(sh.size(0), 1, sh.size(2), 1) + pert
+
+    # np.save(os.path.join('dump', 'ori_shape.npy'), sh.cpu().data.numpy())
+    # np.save(os.path.join('dump', 'rot_shape.npy'), sh_rot.cpu().data.numpy())
+    # np.save(os.path.join('dump', 'shf_shape.npy'), sh_mv.cpu().data.numpy())
+
+    # import pdb; pdb.set_trace()
+
+    return sh_mv
+
+def rotate_pc(point_cloud,rotations):
+    batch_size = rotations.size(0)
+    num_cluster = rotations.size(1)
+    assert rotations.size(2) == 3
+    rotated_list=[]
+    one=torch.tensor(1.).float().cuda().detach()
+    zero=torch.tensor(0.).float().cuda().detach()
+    #print(zero.get_shape())
+
+    rotated_pc = torch.zeros_like(point_cloud)
+    for i in range(batch_size):
+        for j in range(num_cluster):
+            x=rotations[i,j,0]
+            y=rotations[i,j,1]
+            z=rotations[i,j,2]
+            cosz = torch.cos(z)
+            sinz = torch.sin(z)
+            #print(cosz.get_shape())
+            # import pdb; pdb.set_trace()
+            Mz=torch.stack([
+                    cosz, -sinz, zero,
+                    sinz, cosz, zero,
+                    zero, zero, one
+            ], dim=-1).view(3, 3)
+            Mz=torch.squeeze(Mz)
+            cosy = torch.cos(y)
+            siny = torch.sin(y)
+            # import pdb; pdb.set_trace()
+            My=torch.stack([
+                    cosy, zero, siny,
+                    zero, one,zero,
+                    -siny, zero, cosy
+            ], dim=-1).view(3, 3)
+            My=torch.squeeze(My)
+            cosx = torch.cos(x)
+            sinx = torch.sin(x)
+            Mx=torch.stack([
+                    one,zero, zero,
+                    zero, cosx, -sinx,
+                    zero, sinx, cosx
+            ], dim=-1).view(3, 3)
+            Mx=torch.squeeze(Mx)
+            rotate_mat=torch.matmul(Mx,torch.matmul(My,Mz))
+            rotated_pc[i, j] = torch.matmul(point_cloud[i,j],rotate_mat)
+    return rotated_pc
+
+
+def shift_object(sh,center,num_point,scale):
+    def normalize(data,scale):
+        center=(np.max(data,axis=0)+np.min(data,axis=0))/2
+        data=data - np.expand_dims(center,axis=0)
+        norm = np.linalg.norm(data,axis=1)
+        radius=np.max(norm)
+        data=data/radius
+        data=data*scale
+        return data
+    sh=normalize(sh,scale)
+    if sh.shape[0] > num_point:
+        np.random.shuffle(sh)
+        sh=sh[:num_point]
+    center=np.array(center)
+    center=np.reshape(center,[1,3])
+    return sh+center
+
+def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, np_add_ori, optimizer=None):
 
     ###############################################################
     ### a simple implementation
@@ -216,7 +309,6 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
         # TEST_PATH  = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/test_files.txt'
         TARGET_DATASET = AttackScanNetLoader(TEST_PATH, npoint=args.num_point, split='test',
                                                         normal_channel=args.normal, victim=args.target, target=args.target)
-
     targetDataLoader = torch.utils.data.DataLoader(TARGET_DATASET, batch_size=args.init_pt_batch, shuffle=False, num_workers=4)
     b_iter = iter(targetDataLoader)
     try:
@@ -232,7 +324,15 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
                                  #sometimes, there is only a limited number of cluster formed
                                  #so that DBSCAN may only get a NUM_CLUSTER smaller than the specified parameter
                                  #considering that, NUM_CLUSTER in this script is not a given parameter but obtained from the init point data
-
+    np_cls_center = np.zeros((NUM_CLUSTER, 3))
+    for i in range(NUM_CLUSTER):
+        tmp=init_points_list[i]
+        np_cls_center[i]=np.mean(tmp,axis=0)
+        tmp=pick_scale_object(np_add_ori,args.add_num,0.3)
+        # tmp=shift_object(np_add_ori,cls_center,args.add_num,0.3)
+        tmp=np.expand_dims(tmp,axis=0)[:, None]
+        init_points_list[i]=np.tile(tmp,[BATCH_SIZE,1,1,1])
+    init_points_list = np.concatenate(init_points_list, axis=1)
 
     if args.normal:
         o_bestattack = np.ones(shape=(BATCH_SIZE,NUM_POINT+NUM_ADD*NUM_CLUSTER,6))
@@ -256,19 +356,6 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
 
     train_timer = []
 
-    #make sure each element(cluster) in init_point_list is in shape of BATCH_SIZE*NUM_ADD*3
-    for i in range(NUM_CLUSTER):
-        tmp=init_points_list[i]
-        if len(tmp) >= NUM_ADD:
-            tmp=tmp[-NUM_ADD:]
-        else:
-            tmp=np.tile(tmp,[NUM_ADD // len(tmp),1])
-            if NUM_ADD % len(tmp) != 0:
-                tmp=np.concatenate([tmp,tmp[- (NUM_ADD % len(tmp)) : ]],axis=0)
-        tmp=np.expand_dims(tmp,axis=0)
-        init_points_list[i]=np.tile(tmp,[BATCH_SIZE,1,1])
-        #print(init_points_list[i].shape)
-
     b_step = [-1] * BATCH_SIZE
     b_iter = [-1] * BATCH_SIZE
     for out_step in range(BINARY_SEARCH_STEP):
@@ -280,23 +367,19 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
 
         # INIT_STD = 0.01
         INIT_STD = 1e-7
-        for i in range(NUM_CLUSTER):
-            if args.normal:
-                pert = torch.normal(0, INIT_STD, size=(BATCH_SIZE,NUM_ADD,6), requires_grad=True, device='cuda')
-            else:
-                pert = torch.normal(0, INIT_STD, size=(BATCH_SIZE,NUM_ADD,3), requires_grad=True, device='cuda')
+        # combine shift and perturbation into just perturbation, it has equal effects
+        if args.normal:
+            pert = torch.normal(0, INIT_STD, size=(BATCH_SIZE,NUM_CLUSTER,NUM_ADD+1,6), requires_grad=True, device='cuda')
+        else:
+            pert = torch.normal(0, INIT_STD, size=(BATCH_SIZE,NUM_CLUSTER,NUM_ADD+1,3), requires_grad=True, device='cuda')
 
-            optimizer = torch.optim.Adam(
-                # classifier.parameters(),
-                [pert], # + list(classifier.parameters()),
-                lr=args.learning_rate,
-                betas=(0.9, 0.999),
-                eps=1e-08,
-                weight_decay=args.decay_rate
-            )
-            pert_list.append(pert)
-            optim_list.append(optimizer)
-            # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.7)
+        optimizer = torch.optim.Adam(
+            [pert],
+            lr=args.learning_rate,
+            betas=(0.9, 0.999),
+            eps=1e-08,
+            weight_decay=args.decay_rate
+        )
 
         # bestdist: starting with norm 1e10,
         #           recording lowest norm of successful perturbation
@@ -328,34 +411,29 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
             nndistance_loss_list=[]
             point_added_list=[]
 
-            for i in range(NUM_CLUSTER):
-                optim_list[i].zero_grad()
-                pert = pert_list[i]
-                point_added = torch.Tensor(init_points_list[i]).cuda()
-                point_added[:, :, 0:3] = point_added[:, :, 0:3] + pert
-                point_added_list.append(point_added)
-                # initial_point_pl_list.append(initial_point_pl)
-                # initial_point_pl_list: initial points from target class
-                # point_added_list: list of final points
 
-                #farthest distance loss
-                # import pdb; pdb.set_trace()
-                point_expand=point_added.unsqueeze(dim=1)
-                point_tranpose=point_expand.permute(0,2,1,3)
+            optimizer.zero_grad()
+            init_objs = torch.from_numpy(init_points_list).float().cuda()
+            init_objs.requires_grad = False
 
-                # delta_matrix: below/above diagnal line, representing deltas between each other
-                delta_matrix = point_expand - point_tranpose + 1e-5 #avoid division by zero
-                norm_matrix = torch.linalg.norm(delta_matrix, dim=3)
-                farthest_loss = norm_matrix.amax(dim=(1, 2))
-                farthest_loss_list.append(farthest_loss)
+            center_objs = torch.from_numpy(np_cls_center).float().cuda()
+            center_objs.requires_grad = False
 
-                #Chamfer/Hausdorff
-                dists_forward = chamfer.chamfer_distance(point_added, points, batch_reduction=None)[0]
-                # dists_forward,_,dists_backward,_ = tf_nndistance.nn_distance(point_added,pointclouds_pl)
-                # dists_forward = tf.reduce_mean(dists_forward,axis=1)#Chamfer
-                nndistance_loss_list.append(dists_forward)
+            # only works on 3 channel xyz point cloud
+            # point_added: b, c, cluster points, 3
+            point_added = rotate_shift(
+                                        init_objs,
+                                        pert[:,:,-1,:],
+                                        center_objs,
+                                        pert[:,:,:NUM_ADD,:]
+            ).view(BATCH_SIZE, -1, 3)
 
-            points_all = torch.cat(([points]+point_added_list), dim=1)
+            norm_loss = torch.sqrt(torch.sum((pert[:,:,:NUM_ADD,:]) ** 2, dim=[1, 2, 3]))
+            chamfer_loss = chamfer.chamfer_distance(point_added, points, batch_reduction=None)[0]
+
+            # import pdb; pdb.set_trace()
+
+            points_all = torch.cat((points, point_added), dim=1)
             points_cls = points_all.transpose(2, 1)
             points_cls, attacked_label = points_cls.cuda(), attacked_label.cuda()
 
@@ -367,29 +445,19 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
             pred, _ = classifier(points_cls)
             adv_loss = criterion(pred, attacked_label.long())
 
-
-
-            for i in range(NUM_CLUSTER):
-                l_cluster = (WEIGHT* (farthest_loss_list[i] + args.mu * nndistance_loss_list[i])).mean()
-                loss = adv_loss + l_cluster
-
-                if i == NUM_CLUSTER-1:
-                	loss.backward()
-                else:
-                	loss.backward(retain_graph=True)
-                optim_list[i].step()
+            l_cluster = (WEIGHT* (norm_loss + args.mu * chamfer_loss)).mean()
+            loss = adv_loss + l_cluster
+            loss.backward()
+            optimizer.step()
 
             st = datetime.datetime.now().timestamp() - st
             train_timer.append(st)
 
             pred_cls_np = pred.max(dim=1)[1].cpu().data.numpy()
 
-            farthest_loss_np = (sum(farthest_loss_list)/len(farthest_loss_list)).cpu().data.numpy()
-            nndistance_loss_np = (sum(nndistance_loss_list)/len(nndistance_loss_list)).cpu().data.numpy()
-
             # import pdb; pdb.set_trace()
             points_np = points_all.cpu().data.numpy()
-            points_add_np = np.stack([x.cpu().data for x in point_added_list]).transpose((1, 0, 2, 3))
+            points_add_np = point_added.view(BATCH_SIZE, NUM_CLUSTER, NUM_ADD, 3).cpu().data.numpy()
             init_add_pts_np = np.stack([x for x in init_points_list]).transpose((1, 0, 2, 3))
 
             if iteration % ((NUM_ITERATIONS // 10) or 1) == 0:
@@ -398,10 +466,10 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
                                "distance={},{}")
                               .format(iteration, NUM_ITERATIONS,
                                 loss, adv_loss,
-                                farthest_loss_np.mean(), nndistance_loss_np.mean() ))
+                                norm_loss.mean(), chamfer_loss.mean() ))
 
 
-            for e, (dist_f, dist_h, prd, ii, ii_add) in enumerate(zip(farthest_loss_np, nndistance_loss_np, pred_cls_np, points_np, points_add_np)):
+            for e, (dist_f, dist_h, prd, ii, ii_add) in enumerate(zip(norm_loss, chamfer_loss, pred_cls_np, points_np, points_add_np)):
                 dist = dist_h*args.mu + dist_f
                 if dist < bestdist[e] and prd == attacked_label[e]:
                     bestdist[e] = dist
@@ -459,7 +527,6 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
 
 
 def main(args):
-
     '''HYPER PARAMETER'''
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     global CLASS_ATTACK
@@ -479,7 +546,7 @@ def main(args):
     checkpoints_dir.mkdir(exist_ok=True)
     # log_dir = experiment_dir.joinpath('logs/')
     # log_dir.mkdir(exist_ok=True)
-    atk_dir = experiment_dir.joinpath('attacked_cluster%s/' % (args.file_affix))
+    atk_dir = experiment_dir.joinpath('attacked_obj%s/' % (args.file_affix))
     atk_dir.mkdir(exist_ok=True)
 
     '''LOG'''
@@ -510,6 +577,7 @@ def main(args):
             normal_channel=args.normal,
             backbone=get_backbone(args.backbone, num_class, 1), s=args.dim*3).cuda()
     elif args.model == 'pointnet_ddn':
+        print('using ddn')
         dnn_conf = {
             'input_transform': False,
             'feature_transform': False,
@@ -538,6 +606,8 @@ def main(args):
         log_string('No existing model, starting training from scratch...')
         start_epoch = 0
     classifier.eval()
+
+    np_add_object = np.load(args.obj_root)
 
 
     # TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
@@ -598,15 +668,15 @@ def main(args):
                 images, targets = next(batch_iterator)
 
             # images: b * num_pts * c
-            dist, img, preds, adds, info_add = attack_one_batch(classifier, criterion, images, targets, args)
+            dist, img, preds, adds, info_add = attack_one_batch(classifier, criterion, images, targets, args, np_add_object)
             # dist, img = attack_one_batch(classifier, criterion, images, targets, args, optimizer)
             dist_list.append(dist)
 
             log_string("{}_{}_{} attacked.".format(victim,args.target,j))
-            np.save(os.path.join(atk_dir, '{}_{}_{}_cluster.npy' .format(victim,args.target,j)), adds)
-            np.save(os.path.join(atk_dir, '{}_{}_{}_cluster_f.npy' .format(victim,args.target,j)), info_add[1])
+            np.save(os.path.join(atk_dir, '{}_{}_{}_obj.npy' .format(victim,args.target,j)), adds)
+            np.save(os.path.join(atk_dir, '{}_{}_{}_obj_f.npy' .format(victim,args.target,j)), info_add[1])
             np.save(os.path.join(atk_dir, '{}_{}_{}_orig.npy' .format(victim,args.target,j)),images)#dump originial example for comparison
-            np.save(os.path.join(atk_dir, '{}_{}_{}_cluster_orig.npy' .format(victim,args.target,j)), info_add[0])
+            np.save(os.path.join(atk_dir, '{}_{}_{}_obj_orig.npy' .format(victim,args.target,j)), info_add[0])
 
             np.save(os.path.join(atk_dir, '{}_{}_{}_pred.npy' .format(victim,args.target,j)),preds)
             np.save(os.path.join(atk_dir, '{}_{}_{}_dists.npy' .format(victim,args.target,j)), info_add[3])
@@ -634,7 +704,7 @@ if __name__ == '__main__':
     logger = logging.getLogger("Model")
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    file_handler = logging.FileHandler('%s/%s_cluster%s.txt' % (log_dir, args.model, args.file_affix))
+    file_handler = logging.FileHandler('%s/%s_obj%s.txt' % (log_dir, args.model, args.file_affix))
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
