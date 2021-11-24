@@ -42,6 +42,16 @@ python train_cls.py --model pointnet_cls --dataset ModelNet40 --num_cls 40 --log
 ```
 Refer to `train_cls.py` for detailed options. Best model from training will be saved in `log/classification/***/checkpoints/best_model.pth`.
 
+To switch between binarized weights and barycentric weights, it is currently done manually. Find the following lines in `models/lattice_cls.py`. It is binarized weights. By commenting out all the lines, the LPC models use barycentric weights. 
+```
+if not self.normal_channel:
+    # next two lines are for cutoff weights
+    # cutoff = filter_2d[filter_2d>0].mean() * 2
+    # filter_2d[filter_2d>cutoff] = cutoff
+    # next line is for binarized weights
+    filter_2d[filter_2d>0] = 1.0
+```
+
 DUP-Net and IF-Defense have similar architecture of their specific module plus PointNet. We can use the previously trained PointNet model. Download DUP-Net specific pretrained model `pu-in_1024-up_4.pth` from [here](https://github.com/Wuziyi616/IF-Defense/blob/main/baselines/defense/DUP_Net/pu-in_1024-up_4.pth) and save in `dump/`.
 
 PointNet with RPL can be trained using our code. But we also recommend using [this implementation](https://github.com/anucvml/ddn/tree/master/apps/classification/pointcloud) for faster result and moving the trained model here.
@@ -68,6 +78,7 @@ PointNet with RPL can be trained using our code. But we also recommend using [th
 * #### DUP-Net
   Download pretrained model `pu-in_1024-up_4.pth` from [here](https://github.com/Wuziyi616/IF-Defense/blob/main/baselines/defense/DUP_Net/pu-in_1024-up_4.pth) to `dump/` and `log_ctri_attack/`
 ### Run
+Be careful and match model parameters with the setups during training process
 * #### FGSM/JGBA attack (on PointNet, PointNet w/ RPL and LPC, except DUP-Net and IF-Defense): 
 ```
 # FGSM/JGBA attack on PointNet model on ModelNet40
