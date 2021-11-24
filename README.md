@@ -26,7 +26,7 @@ And other packages might be needed.
      
      Please refer to [here](http://www.scan-net.org/) for downloading ScanNet data.
   
-     And refer to [here](https://github.com/yangyanli/PointCNN) for converting the data to classification task.
+     Refer to [here](https://github.com/yangyanli/PointCNN) for converting the data to classification task and save in `data/scannet/`.
      
       * Once receiving ScanNet download script from [official site](http://www.scan-net.org/), download the v2 "_vh_clean_2.ply", "_vh_clean_2.0.010000.segs.json", ".aggregation.json" and label map files
       * Once download completes, run `extract_scannet_objs.py` and `prepare_scannet_cls_data.py` in [this repo](https://github.com/yangyanli/PointCNN) to get classification data as suggested.
@@ -107,6 +107,8 @@ Download the object  `airplane.npy` to be attached from [here](https://github.co
 # Object attack on PointNet on ModelNet40, adding 3 objects of 64 points
 python object_attack.py --batch_size 6 --learning_rate 0.01 --target 0 --model pointnet_cls --add_num 64 --num_cluster 3 --log_dir [folder_name_under_attacks] --eps 0.11 --mu 0.1 --init_pt_batch 8 --max_num 32
 ```
+The above attack results (e.g. adversarial samples) will be saved in a folder `attacked_[attack_name]` under `$log_dir`. For DUP-Net and IF-Defense, perturbation, add, cluster and object attacks are done on clean PointNet. Then package the attack results under the `attacked_[attack_name]` folder using `data_analysis/sum-[attack_name].py` and move to [here](https://github.com/Wuziyi616/IF-Defense) for defense performance analysis. 
+
 * #### CTRI attack (on PointNet, DUP-Net, PointNet w/ RPL and LPC, except IF-Defense): 
 ```
 # CTRI attack on DUP-Net on ModelNet40
@@ -118,6 +120,7 @@ python ctri_attack.py --data modelnet40 --model dupnet --model_path [pretrain_na
 [yanx27/Pointnet_Pointnet2_pytorch](https://github.com/yanx27/Pointnet_Pointnet2_pytorch)<br>
 [Wuziyi616/IF-Defense](https://github.com/Wuziyi616/IF-Defense) <br>
 [xiangchong1/3d-adv-pc](https://github.com/xiangchong1/3d-adv-pc) <br>
+[yangyanli/PointCNN](https://github.com/yangyanli/PointCNN) <br>
 [pytorch/fgsm](https://pytorch.org/tutorials/beginner/fgsm_tutorial.html) <br>
 [machengcheng2016/JGBA-pointcloud-attack](https://github.com/machengcheng2016/JGBA-pointcloud-attack) <br>
 [anucvml/ddn](https://github.com/anucvml/ddn) <br>
