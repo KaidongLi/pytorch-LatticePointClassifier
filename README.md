@@ -1,123 +1,113 @@
-# Pytorch Implementation of PointNet and PointNet++ 
+# Pytorch Implementation of Lattice Point Classifier (LPC)
 
-This repo is implementation for [PointNet](http://openaccess.thecvf.com/content_cvpr_2017/papers/Qi_PointNet_Deep_Learning_CVPR_2017_paper.pdf) and [PointNet++](http://papers.nips.cc/paper/7095-pointnet-deep-hierarchical-feature-learning-on-point-sets-in-a-metric-space.pdf) in pytorch.
+This repo is the official implementation for **Robust Structured Declarative Classifiers for 3D Point Clouds: Defending Adversarial Attacks with Implicit Gradients**. We study its classification and defense performances against some state-of-the-art adversarial attacks and compare the results with state-of-the-art defenses. 
 
-## Update
-**2019/11/26:**
-
-(1) Fixed some errors in previous codes and added data augmentation tricks. Now classification by only 1024 points can achieve 92.8\%! 
-
-(2) Added testing codes, including classification and segmentation, and semantic segmentation with visualization. 
-
-(3) Organized all models into `./models` files for easy using.
-
-If you find this repo useful in your research, please consider following and citing our other works:
-```
-@InProceedings{yan2020pointasnl,
-  title={PointASNL: Robust Point Clouds Processing using Nonlocal Neural Networks with Adaptive Sampling},
-  author={Yan, Xu and Zheng, Chaoda and Li, Zhen and Wang, Sheng and Cui, Shuguang},
-  journal={Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition},
-  year={2020}
-}
-```
-```
-@InProceedings{yan2021sparse,
-  title={Sparse Single Sweep LiDAR Point Cloud Segmentation via Learning Contextual Shape Priors from Scene Completion},
-  author={Yan, Xu and Gao, Jiantao and Li, Jie and Zhang, Ruimao, and Li, Zhen and Huang, Rui and Cui, Shuguang},
-  journal={AAAI Conference on Artificial Intelligence ({AAAI})},
-  year={2021}
-}
-```
-## Classification
-### Data Preparation
-Download alignment **ModelNet** [here](https://shapenet.cs.stanford.edu/media/modelnet40_normal_resampled.zip) and save in `data/modelnet40_normal_resampled/`.
-
-### Run
-```
-## Check model in ./models 
-## E.g. pointnet2_msg
-python train_cls.py --model pointnet2_cls_msg --normal --log_dir pointnet2_cls_msg
-python test_cls.py --normal --log_dir pointnet2_cls_msg
-```
-
-### Performance
-| Model | Accuracy |
-|--|--|
-| PointNet (Official) |  89.2|
-| PointNet2 (Official) | 91.9 |
-| PointNet (Pytorch without normal) |  90.6|
-| PointNet (Pytorch with normal) |  91.4|
-| PointNet2_SSG (Pytorch without normal) |  92.2|
-| PointNet2_SSG (Pytorch with normal) |  92.4|
-| PointNet2_MSG (Pytorch with normal) |  **92.8**|
-
-## Part Segmentation
-### Data Preparation
-Download alignment **ShapeNet** [here](https://shapenet.cs.stanford.edu/media/shapenetcore_partanno_segmentation_benchmark_v0_normal.zip)  and save in `data/shapenetcore_partanno_segmentation_benchmark_v0_normal/`.
-### Run
-```
-## Check model in ./models 
-## E.g. pointnet2_msg
-python train_partseg.py --model pointnet2_part_seg_msg --normal --log_dir pointnet2_part_seg_msg
-python test_partseg.py --normal --log_dir pointnet2_part_seg_msg
-```
-### Performance
-| Model | Inctance avg IoU| Class avg IoU 
-|--|--|--|
-|PointNet (Official)	|83.7|80.4	
-|PointNet2 (Official)|85.1	|81.9	
-|PointNet (Pytorch)|	84.3	|81.1|	
-|PointNet2_SSG (Pytorch)|	84.9|	81.8	
-|PointNet2_MSG (Pytorch)|	**85.4**|	**82.5**	
-
-
-## Semantic Segmentation
-### Data Preparation
-Download 3D indoor parsing dataset (**S3DIS**) [here](http://buildingparser.stanford.edu/dataset.html)  and save in `data/Stanford3dDataset_v1.2_Aligned_Version/`.
-```
-cd data_utils
-python collect_indoor3d_data.py
-```
-Processed data will save in `data/stanford_indoor3d/`.
-### Run
-```
-## Check model in ./models 
-## E.g. pointnet2_ssg
-python train_semseg.py --model pointnet2_sem_seg --test_area 5 --log_dir pointnet2_sem_seg
-python test_semseg.py --log_dir pointnet2_sem_seg --test_area 5 --visual
-```
-Visualization results will save in `log/sem_seg/pointnet2_sem_seg/visual/` and you can visualize these .obj file by [MeshLab](http://www.meshlab.net/).
-### Performance on sub-points of raw dataset (processed by official PointNet [Link](https://shapenet.cs.stanford.edu/media/indoor3d_sem_seg_hdf5_data.zip))
-|Model  | Class avg IoU | 
-|--|--|
-| PointNet (Official) | 41.1|
-| PointNet (Pytorch) | 48.9|
-| PointNet2 (Official) |N/A | 
-| PointNet2_ssg (Pytorch) | **53.2**|
-### Performance on raw dataset
-still on testing...
-
-## Visualization
-### Using show3d_balls.py
-```
-## build C++ code for visualization
-cd visualizer
-bash build.sh 
-## run one example 
-python show3d_balls.py
-```
-![](/visualizer/pic.png)
-### Using MeshLab
-![](/visualizer/pic2.png)
-
-
-## Reference By
-[halimacc/pointnet3](https://github.com/halimacc/pointnet3)<br>
-[fxia22/pointnet.pytorch](https://github.com/fxia22/pointnet.pytorch)<br>
-[charlesq34/PointNet](https://github.com/charlesq34/pointnet) <br>
-[charlesq34/PointNet++](https://github.com/charlesq34/pointnet2)
+We also collect the implementations of these 3D point cloud attacks ([FGSM](https://arxiv.org/pdf/1412.6572.pdf), [JGBA](https://dl.acm.org/doi/pdf/10.1145/3394171.3413875?casa_token=fk6eajSNqSwAAAAA:rqBCH1XnUfVdUrIFOL7nzMQ_gaEbLYFvQqs8IU9BABW7ge28AsVCtTILnancYZXKM_Z3EpOUVN1nAg), [Perturbation Add Cluster and Object Attacks](https://openaccess.thecvf.com/content_CVPR_2019/papers/Xiang_Generating_3D_Adversarial_Point_Clouds_CVPR_2019_paper.pdf), [CTRI](https://openaccess.thecvf.com/content_CVPR_2020/papers/Zhao_On_Isometry_Robustness_of_Deep_3D_Point_Cloud_Models_Under_CVPR_2020_paper.pdf)) and defenses ([DUP-Net](https://openaccess.thecvf.com/content_ICCV_2019/papers/Zhou_DUP-Net_Denoiser_and_Upsampler_Network_for_3D_Adversarial_Point_Clouds_ICCV_2019_paper.pdf), [IF-Defense](https://arxiv.org/pdf/2010.05272.pdf) and [RPL](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=9355027&casa_token=9kl6Y0dQ330AAAAA:6iZ47UV7veR7HvRXlkALeenfsiwe7qoqX3euYp-etvUj4Kw7xBAmUgD5p04bTVJeiZ2APXYSyXA&tag=1)) in this repository, in the hope of serving as a reference point for future research.
 
 ## Environments
-Ubuntu 16.04 <br>
-Python 3.6.7 <br>
-Pytorch 1.1.0
+We run our experiments under:
+
+Python 3.6.9 <br>
+GCC 6.3.0 <br>
+CUDA 10.1.105 <br>
+torch 1.7.1 <br>
+pytorch3d 0.4.0 <br>
+open3d 0.9.0.0
+
+And other packages might be needed.
+
+## Classification
+### Data Preparation
+  *  ModelNet40
+     
+     Download alignment **ModelNet40** [here](https://shapenet.cs.stanford.edu/media/modelnet40_normal_resampled.zip) and save in `data/modelnet40_normal_resampled/`.
+
+  *  ScanNet
+     
+     Please refer to [here](http://www.scan-net.org/) for downloading ScanNet data.
+  
+     And refer to [here](https://github.com/yangyanli/PointCNN) for converting the data to classification task.
+     
+      * Once receiving ScanNet download script from [official site](http://www.scan-net.org/), download the v2 "_vh_clean_2.ply", "_vh_clean_2.0.010000.segs.json", ".aggregation.json" and label map files
+      * Once download completes, run `extract_scannet_objs.py` and `prepare_scannet_cls_data.py` in [this repo](https://github.com/yangyanli/PointCNN) to get classification data as suggested.
+      * During extract, there are 5 mismatched class name pairs ("trash", "trash can"), ("bathtub", "tub"), ("shelf", "bookshelf"), ("keyboard", "computer keyboard") and ("tv", "monitor or tv"). We modify `extract_scannet_objs.py` to link these pairs and change to the former name.
+
+### Run Classification
+```
+# train LPC with EfficientNet-B5 as backbone and scaling factor 456 on ScanNet dataset
+python train_cls.py --dataset ScanNetCls --num_cls 17 --model lattice_cls --backbone efficientnet-b5 --dim 456 --learning_rate 0.0001 --log_dir lpc_eff_456 --batch_size 4
+
+# train PointNet on ModelNet40 dataset
+python train_cls.py --model pointnet_cls --dataset ModelNet40 --num_cls 40 --log_dir pointnet_cls --batch_size 24
+```
+Refer to `train_cls.py` for detailed options. Best model from training will be saved in `log/classification/***/checkpoints/best_model.pth`.
+
+DUP-Net and IF-Defense have similar architecture of their specific module plus PointNet. We can use the previously trained PointNet model. Download DUP-Net specific pretrained model `pu-in_1024-up_4.pth` from [here](https://github.com/Wuziyi616/IF-Defense/blob/main/baselines/defense/DUP_Net/pu-in_1024-up_4.pth) and save in `dump/`.
+
+PointNet with RPL can be trained using our code. But we also recommend using [this implementation](https://github.com/anucvml/ddn/tree/master/apps/classification/pointcloud) for faster result and moving the trained model here.
+
+### Accuracy
+| Model | ModelNet40 | ScanNet|
+|--|--|--|
+| PointNet              | **90.15** | **84.61** |
+| DUP-Net               | 89.30 | 83.62 |
+| IF-Defense            | 87.60 | 80.19 |
+| PointNet RPL          | 84.76 | 76.02 |
+| LPC w/ vgg16          | 88.65 | --    |
+| LPC w/ resnet50       | 88.90 | --    |
+| LPC w/ efficientnet-b5| 89.51 | 83.16 |
+
+## Attack
+### Model Preparation
+* #### FGSM, JGBA, Perturbation
+  Copy model folder from classifcation result `log/classification/` to `log/perturbation/`
+* #### Add, Cluster, Object Attacks
+  Copy model folder from classifcation result `log/classification/` to `log/attacks/`
+* #### CTRI
+  Copy saved `.pth` model from classifcation result `log/classification/***/checkpoints/best_model.pth` to `log_ctri_attack/`
+* #### DUP-Net
+  Download pretrained model `pu-in_1024-up_4.pth` from [here](https://github.com/Wuziyi616/IF-Defense/blob/main/baselines/defense/DUP_Net/pu-in_1024-up_4.pth) to `dump/` and `log_ctri_attack/`
+### Run
+* #### FGSM/JGBA attack (on PointNet, PointNet w/ RPL and LPC, except DUP-Net and IF-Defense): 
+```
+# FGSM/JGBA attack on PointNet model on ModelNet40
+python pert_JGBA_attack.py --attack [FGSM/JGBA] --model pointnet_cls --dataset ModelNet40 --num_cls 40 --log_dir [folder_name_under_perturbation]
+```
+* #### FGSM/JGBA attack (for both DUP-Net and IF-Defense): 
+```
+# FGSM/JGBA attack on ScanNet
+python pert_JGBA_attack_SOR.py --attack [FGSM/JGBA] --dataset ScanNetCls --num_cls 17 --log_dir [folder_name_under_perturbation]
+```
+* #### Perturbation, add, cluster and object attacks (on PointNet, PointNet w/ RPL and LPC, except DUP-Net and IF-Defense): 
+```
+# Perturbation attack on PointNet on ModelNet40
+python perturbation_attack.py --batch_size 6 --learning_rate 0.01 --target 0 --model pointnet_cls --log_dir [folder_name_under_perturbation]
+```
+```
+# Add attack on RPL on ScanNet, adding 60 independent points
+python independent_attack.py --batch_size 6 --learning_rate 0.01 --target 0 --model pointnet_ddn --add_num 60 --log_dir [folder_name_under_attacks] --dataset ScanNetCls --num_cls 17
+```
+```
+# Cluster attack on LPC with vgg16 and scaling factor 512 on ModelNet40, adding 3 clusters of 32 points
+python cluster_attack.py --batch_size 6 --learning_rate 0.01 --target 0 --model lattice_cls --backbone vgg16 --dim 512 --add_num 32 --num_cluster 3 --log_dir [folder_name_under_attacks] --eps 0.11 --mu 0.1 --init_pt_batch 8 --max_num 32
+```
+Download the object  `airplane.npy` to be attached from [here](https://github.com/xiangchong1/3d-adv-pc/blob/master/data/airplane.npy), and copy it to `data/`.
+```
+# Object attack on PointNet on ModelNet40, adding 3 objects of 64 points
+python object_attack.py --batch_size 6 --learning_rate 0.01 --target 0 --model pointnet_cls --add_num 64 --num_cluster 3 --log_dir [folder_name_under_attacks] --eps 0.11 --mu 0.1 --init_pt_batch 8 --max_num 32
+```
+* #### CTRI attack (on PointNet, DUP-Net, PointNet w/ RPL and LPC, except IF-Defense): 
+```
+# CTRI attack on DUP-Net on ModelNet40
+python ctri_attack.py --data modelnet40 --model dupnet --model_path [pretrain_name_under_log_ctri_attack] --num_points 1024
+```
+
+## Reference Implementations
+[laoreja/HPLFlowNet](https://github.com/laoreja/HPLFlowNet)<br>
+[yanx27/Pointnet_Pointnet2_pytorch](https://github.com/yanx27/Pointnet_Pointnet2_pytorch)<br>
+[Wuziyi616/IF-Defense](https://github.com/Wuziyi616/IF-Defense) <br>
+[xiangchong1/3d-adv-pc](https://github.com/xiangchong1/3d-adv-pc) <br>
+[pytorch/fgsm](https://pytorch.org/tutorials/beginner/fgsm_tutorial.html) <br>
+[machengcheng2016/JGBA-pointcloud-attack](https://github.com/machengcheng2016/JGBA-pointcloud-attack) <br>
+[anucvml/ddn](https://github.com/anucvml/ddn) <br>
+[skywalker6174/3d-isometry-robust](https://github.com/skywalker6174/3d-isometry-robust)
