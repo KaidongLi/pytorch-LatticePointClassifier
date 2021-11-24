@@ -1,7 +1,3 @@
-"""
-Author: Benny
-Date: Nov 2019
-"""
 from data_utils.ModelNetDataLoader import ModelNetDataLoader
 from data_utils.PCAModelNetDataLoader import PCAModelNetDataLoader
 from data_utils.ScanNetDataLoader import ScanNetDataLoader
@@ -18,7 +14,7 @@ import provider
 import importlib
 import shutil
 
-from utils import get_backbone #, get_cifar_training, get_cifar_test
+from utils import get_backbone 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
@@ -63,11 +59,6 @@ def test(model, loader, dir_vis, num_class=40):
         points, target = data
 
 
-        # points = points.cuda()
-        # points[:,:,:3] = provider.random_rotate_pc_3axis(points[:,:,:3])
-        # points = points.cpu()
-
-
         target = target[:, 0]
         points = points.transpose(2, 1)
         points, target = points.cuda(), target.cuda()
@@ -77,46 +68,6 @@ def test(model, loader, dir_vis, num_class=40):
         st = datetime.datetime.now().timestamp()
         pred, _ = classifier(points)
 
-
-        # kaidong test
-        # import pdb; pdb.set_trace()
-        #
-        # np.save(os.path.join(dir_vis, 'pc_'+str(j)+'_orig'),
-        #     # points.permute(0, 2, 3, 1).cpu().data.numpy()
-        #     points.permute(0, 2, 1).cpu().data.numpy()
-        #     # points.cpu().data.numpy()
-        # )
-        # np.save(os.path.join(dir_vis, 'l_'+str(global_step)+'_veceigen'),
-        #     cc.cpu().data.numpy()
-        # )
-        # np.save(os.path.join(dir_vis, 'l_'+str(global_step)+'_valeigen'),
-        #     bb.cpu().data.numpy()
-        # )
-
-        # np.save(os.path.join(dir_vis, 'l_'+str(global_step)+'_rot'),
-        #     # points.permute(0, 2, 3, 1).cpu().data.numpy()
-        #     rot_pts.permute(0, 2, 1).cpu().data.numpy()
-        #     # points.cpu().data.numpy()
-        # )
-        # np.save(os.path.join(dir_vis, 'l_'+str(global_step)+'_rot_veceigen'),
-        #     ccc.cpu().data.numpy()
-        # )
-        # np.save(os.path.join(dir_vis, 'l_'+str(global_step)+'_rot_valeigen'),
-        #     bbb.cpu().data.numpy()
-        # )
-        # np.save(os.path.join(dir_vis, 'l_'+str(global_step)+'_3dlat'),
-        #     _[2].cpu().data.numpy()
-        # )
-        # np.save(os.path.join(dir_vis, 'pc_'+str(j)+'_2dimg'),
-        #     # _[0].permute(0, 2, 3, 1).cpu().data.numpy()
-        #     _[0].cpu().data.numpy()
-        # )
-        # np.save(os.path.join(dir_vis, 'l_'+str(global_step)+'_sparse_lat'),
-        #     _[0].permute(0, 2, 3, 1).cpu().data.numpy()
-        # )
-
-
-
         pred_choice = pred.data.max(1)[1]
         # timer ends
         # ss = _[1] - st
@@ -125,7 +76,7 @@ def test(model, loader, dir_vis, num_class=40):
         test_timer.append(st)
         for cat in np.unique(target.cpu()):
 
-            # kaidong mod: resolve tensor cannot be (target==cat) eq() to a numpy bug
+            # resolve tensor cannot be (target==cat) eq() to a numpy bug
             cat = cat.item()
 
             classacc = pred_choice[target==cat].eq(target[target==cat].long().data).cpu().sum()
@@ -194,39 +145,21 @@ def main(args):
         DATA_PATH = 'data/modelnet40_normal_resampled/'
 
         if args.pca:
-            # TRAIN_DATASET = PCAModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='train',
-            #                                             normal_channel=args.normal)
             TEST_DATASET = PCAModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
                                                             normal_channel=args.normal)
         else:
-            # TRAIN_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='train',
-            #                                                  normal_channel=args.normal)
             TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
                                                             normal_channel=args.normal)
     elif args.dataset == 'ScanNetCls':
         assert (not args.pca), 'ScanNetCls with PCA is not supported yet'
 
-        TEST_PATH  = 'dump/scannet_test_data8316.npz'
-        # TEST_PATH  = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/test_files.txt'
+        # TEST_PATH  = 'dump/scannet_test_data8316.npz'
+        TEST_PATH  = 'data/scannet/test_files.txt'
         TEST_DATASET = ScanNetDataLoader(TEST_PATH, npoint=args.num_point, split='test',
                                                             normal_channel=args.normal)
 
 
-    # trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=args.batch_size, shuffle=True, num_workers=4)
     testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
-
-
-    # trainDataLoader = get_cifar_training(
-    #     (0.5070751592371323, 0.48654887331495095, 0.4409178433670343),
-    #     (0.2673342858792401, 0.2564384629170883, 0.27615047132568404),
-    #     num_workers=4, batch_size=args.batch_size, shuffle=True
-    # )
-
-    # testDataLoader = get_cifar_test(
-    #     (0.5070751592371323, 0.48654887331495095, 0.4409178433670343),
-    #     (0.2673342858792401, 0.2564384629170883, 0.27615047132568404),
-    #     num_workers=4, batch_size=args.batch_size, shuffle=False
-    # )
 
     '''MODEL LOADING'''
     num_class = args.num_cls
@@ -236,10 +169,6 @@ def main(args):
     shutil.copy('./models/%s.py' % args.model, str(experiment_dir))
     shutil.copy('./models/pointnet_util.py', str(experiment_dir))
 
-    # classifier = MODEL.get_model(num_class,normal_channel=args.normal,s=128*3).cuda()
-    # classifier = MODEL.get_model(num_class,
-    #     normal_channel=args.normal,
-    #     backbone=get_backbone(args.backbone, num_class, 1)).cuda()
     if args.model == 'lattice_cls':
         classifier = MODEL.get_model(num_class,
             normal_channel=args.normal,

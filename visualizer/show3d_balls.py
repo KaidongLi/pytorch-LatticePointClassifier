@@ -1,4 +1,3 @@
-""" Original Author: Haoqiang Fan """
 import numpy as np
 import ctypes as ct
 import cv2

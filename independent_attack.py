@@ -1,7 +1,3 @@
-"""
-Author: Benny
-Date: Nov 2019
-"""
 from data_utils.ModelNetDataLoader import ModelNetDataLoader
 from data_utils.AttackModelNetLoader import AttackModelNetLoader
 from data_utils.AttackScanNetLoader import AttackScanNetLoader
@@ -21,8 +17,6 @@ import shutil
 from pytorch3d.loss import chamfer
 from utils import get_backbone
 
-# from utils import get_cifar_training, get_cifar_test
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, 'models'))
@@ -33,10 +27,6 @@ sys.path.append(os.path.join(ROOT_DIR, 'models'))
 SCALE_LOW = 30
 SCALE_UP  = 32
 
-# SCALE_LOW = 150
-# SCALE_UP  = 192
-
-# CLASS_ATTACK = [0, 2, 4, 8, 22, 25, 30, 33, 35, 37]
 CLASS_ATTACK = [0, 2, 4, 5, 8, 22, 30, 33, 35, 37]
 
 def log_string(str):
@@ -93,7 +83,7 @@ def test(model, loader, num_class=40):
         # import pdb; pdb.set_trace()
         for cat in np.unique(target.cpu()):
 
-            # kaidong mod: resolve tensor cannot be (target==cat) eq() to a numpy bug
+            # resolve tensor cannot be (target==cat) eq() to a numpy bug
             cat = cat.item()
 
             classacc = pred_choice[target==cat].eq(target[target==cat].long().data).cpu().sum()
@@ -119,23 +109,6 @@ def get_critical_points(data, args):
     NUM_ADD = args.add_num
 
 
-    # sess.run(tf.assign(ops['pert'],tf.zeros([BATCH_SIZE,NUM_ADD,3])))
-    # is_training=False
-
-    #to make sure init_points is in shape of BATCH_SIZE*NUM_ADD*3 so that it can be fed to initial_point_pl
-    # if NUM_ADD > NUM_POINT:
-    #     init_points=torch.tile(data[:,:2,:], [1,NUM_ADD/2,1]) ## due to the max pooling operation of PointNet,
-    #                                                           ## duplicated points would not affect the global feature vector
-    # else:
-    #     init_points=data[:, :NUM_ADD, :]
-
-    # feed_dict = {ops['pointclouds_pl']: data,
-    #              ops['is_training_pl']: is_training,
-    #              ops['initial_point_pl']:init_points}
-
-    # pre_max_val,post_max_val=sess.run([ops['pre_max'],ops['post_max']],feed_dict=feed_dict)
-    # pre_max_val = pre_max_val[:,:NUM_POINT,...]
-    # pre_max_val=np.reshape(pre_max_val,[BATCH_SIZE,NUM_POINT,1024])#1024 is the dimension of PointNet's global feature vector
 
     critical_points=[]
     for i in range(BATCH_SIZE):
@@ -228,33 +201,12 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
         log_string((" Step {} of {}")
                               .format(out_step, BINARY_SEARCH_STEP))
 
-        # feed_dict[ops['dist_weight']]=WEIGHT
-
-        # pert = torch.normal(0, 0.0000001, size=(BATCH_SIZE,NUM_POINT,3)).cuda()
-        # pert = torch.normal(0, 0.05, size=(BATCH_SIZE,NUM_POINT,3)).requires_grad_(True).cuda()
-        # pert = torch.normal(0, 0.05, size=(BATCH_SIZE,NUM_POINT,3)).cuda()
-
-        # pert_list = torch.normal(0, 0.05, size=(BATCH_SIZE,NUM_POINT,3)).tolist()
-        # pert = torch.tensor(pert_list, requires_grad=True).cuda()
-
-        # parameter_vector = torch.tensor(range(10), dtype=torch.float, requires_grad=True)
-        # i = torch.ones(parameter_vector.size(0))
-        # sigma = 0.1
-        # m = torch.distributions.Normal(parameter_vector, sigma*i)
-        # pert = m.rsample()
-
-        # pert = (torch.randn((BATCH_SIZE,NUM_POINT,3), requires_grad=True, device='cuda'))
-        # INIT_STD = 0.01
         INIT_STD = 0.0000001
 
         if args.normal:
             pert = torch.normal(0, INIT_STD, size=(BATCH_SIZE,NUM_ADD,6), requires_grad=True, device='cuda')
         else:
             pert = torch.normal(0, INIT_STD, size=(BATCH_SIZE,NUM_ADD,3), requires_grad=True, device='cuda')
-
-        # pert = torch.empty((BATCH_SIZE,NUM_POINT,3)).normal_(0, 0.01)
-        # pert = pert.requires_grad_(True).cuda()
-
 
         optimizer = torch.optim.Adam(
             # classifier.parameters(),
@@ -266,29 +218,12 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
         )
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.7)
 
-        # sess.run(tf.assign(ops['pert'],tf.truncated_normal([BATCH_SIZE,NUM_POINT,3], mean=0, stddev=0.0000001)))
-
-        # bestdist: starting with norm 1e10,
-        # 			recording lowest norm of successful perturbation
-        # bestscore: starting with -1
-        #            recording the successful attacked label
         bestdist = [1e10] * BATCH_SIZE
         bestscore = [-1] * BATCH_SIZE
 
         prev = 1e6
 
         for iteration in range(NUM_ITERATIONS):
-            # pre-process point cloud
-            # points = points.data.numpy()
-            # points = provider.random_point_dropout(points)
-            # points[:,:, 0:3] = provider.random_scale_point_cloud(points[:,:, 0:3], 0.8, 1.)
-            # points[:,:, 0:3] = provider.shift_point_cloud(points[:,:, 0:3])
-            # points = torch.Tensor(points)
-
-
-            # pert = torch.normal(0, 0.0000001, size=(BATCH_SIZE,NUM_POINT,3))
-
-
             # add perturbation
             points = points_ori
             points = points.cuda()
@@ -349,7 +284,7 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
                     if b_step[e] == -1:
                         b_step[e] = out_step
                         b_iter[e] = iteration
-                # kaidong mods: no success yet, prepare to record least failure
+                # no success yet, prepare to record least failure
                 # only start record at the last binary step
                 if out_step == BINARY_SEARCH_STEP-1 and o_bestscore[e] != attacked_label[e] and dist < o_failDist[e]:
                     o_failDist[e] = dist
@@ -375,13 +310,6 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
     log_string(" Successfully generated adversarial exampleson {} of {} instances." .format(sum(lower_bound > 0), BATCH_SIZE))
     log_string(' Best res on step %s iter %s. Train Mean Time: %fms, batch size: %d'% (str(b_step), str(b_iter), sum(train_timer)/len(train_timer), BATCH_SIZE))
 
-    # for e in range(BATCH_SIZE):
-    #     if o_bestscore[e] != attacked_label[e]:
-    #         o_bestscore[e] = o_failPred[e]
-    #         o_bestdist[e] = o_failDist[e]
-    #         o_bestattack[e] = o_leastFailAttack[e]
-    #         o_bestadd[e] = o_failadd[e]
-
     return o_bestdist, o_bestattack, o_bestscore, o_bestadd, [init_add_pts, o_failadd, o_record2D]
 
 
@@ -393,17 +321,6 @@ def main(args):
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     global CLASS_ATTACK
 
-    '''CREATE DIR'''
-    # timestr = str(datetime.datetime.now().strftime('%Y-%m-%d_%H-%M'))
-    # experiment_dir = Path('./log/')
-    # experiment_dir.mkdir(exist_ok=True)
-    # experiment_dir = experiment_dir.joinpath('perturbation')
-    # experiment_dir.mkdir(exist_ok=True)
-    # if args.log_dir is None:
-    #     experiment_dir = experiment_dir.joinpath(timestr)
-    # else:
-    #     experiment_dir = experiment_dir.joinpath(args.log_dir)
-    # experiment_dir.mkdir(exist_ok=True)
     checkpoints_dir = experiment_dir.joinpath('checkpoints/')
     checkpoints_dir.mkdir(exist_ok=True)
     # log_dir = experiment_dir.joinpath('logs/')
@@ -411,15 +328,6 @@ def main(args):
     atk_dir = experiment_dir.joinpath('attacked_indpts%s/' % (args.file_affix))
     atk_dir.mkdir(exist_ok=True)
 
-    '''LOG'''
-    # args = parse_args()
-    # logger = logging.getLogger("Model")
-    # logger.setLevel(logging.INFO)
-    # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    # file_handler = logging.FileHandler('%s/%s.txt' % (log_dir, args.model))
-    # file_handler.setLevel(logging.INFO)
-    # file_handler.setFormatter(formatter)
-    # logger.addHandler(file_handler)
     log_string('PARAMETER ...')
     log_string(args)
 
@@ -470,16 +378,6 @@ def main(args):
         start_epoch = 0
     classifier.eval()
 
-
-    # TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
-    #                                                 normal_channel=args.normal)
-    # testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
-
-    # # kaidong debug test
-    # with torch.no_grad():
-    #     instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class)
-    #     log_string('Test Instance Accuracy: %f, Class Accuracy: %f'% (instance_acc, class_acc))
-
     global_epoch = 0
     global_step = 0
     best_instance_acc = 0.0
@@ -498,19 +396,13 @@ def main(args):
             continue
 
         if args.dataset == 'ModelNet40':
-            DATA_PATH = '/dev/shm/data/modelnet40/'
-            # DATA_PATH = 'data/modelnet40_normal_resampled/'
-            # TRAIN_DATASET = AttackModelNetLoader(root=DATA_PATH, npoint=args.num_point, split='train',
-            #                                              normal_channel=args.normal, victim=victim, target=args.target)
+            # DATA_PATH = '/dev/shm/data/modelnet40/'
+            DATA_PATH = 'data/modelnet40_normal_resampled/'
             TEST_DATASET = AttackModelNetLoader(root=DATA_PATH, npoint=args.num_point, split='test',
                                                             normal_channel=args.normal, victim=victim, target=args.target)
         elif args.dataset == 'ScanNetCls':
-            # TRAIN_PATH = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/train_files.txt'
-            TEST_PATH  = 'dump/scannet_test_data8316.npz'
-            # TEST_PATH  = '/dev/shm/data/scannet/test_files.txt'
-            # TEST_PATH  = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/test_files.txt'
-            # TRAIN_DATASET = ScanNetDataLoader(TRAIN_PATH, npoint=args.num_point, split='train',
-            #                                                  normal_channel=args.normal)
+            # TEST_PATH  = 'dump/scannet_test_data8316.npz'
+            TEST_PATH  = 'data/scannet/test_files.txt'
             TEST_DATASET = AttackScanNetLoader(TEST_PATH, npoint=args.num_point, split='test',
                                                             normal_channel=args.normal, victim=victim, target=args.target)
 

@@ -1,13 +1,3 @@
-"""resnet in pytorch
-
-
-
-[1] Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun.
-
-    Deep Residual Learning for Image Recognition
-    https://arxiv.org/abs/1512.03385v1
-"""
-
 import torch
 import torch.nn as nn
 

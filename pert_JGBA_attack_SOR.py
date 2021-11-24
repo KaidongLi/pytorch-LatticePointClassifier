@@ -88,7 +88,7 @@ def test(model, loader, num_class=40):
         # import pdb; pdb.set_trace()
         for cat in np.unique(target.cpu()):
 
-            # kaidong mod: resolve tensor cannot be (target==cat) eq() to a numpy bug
+            # resolve tensor cannot be (target==cat) eq() to a numpy bug
             cat = cat.item()
 
             classacc = pred_choice[target==cat].eq(target[target==cat].long().data).cpu().sum()
@@ -269,16 +269,11 @@ def main(args):
 
     if args.dataset == 'ModelNet40':
         DATA_PATH = 'data/modelnet40_normal_resampled/'
-        # TRAIN_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='train',
-        #                                                  normal_channel=args.normal)
         TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
                                                         normal_channel=args.normal)
     elif args.dataset == 'ScanNetCls':
-        # TRAIN_PATH = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/train_files.txt'
-        TEST_PATH  = 'dump/scannet_test_data8316.npz'
-        # TEST_PATH  = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/test_files.txt'
-        # TRAIN_DATASET = ScanNetDataLoader(TRAIN_PATH, npoint=args.num_point, split='train',
-        #                                                  normal_channel=args.normal)
+        # TEST_PATH  = 'dump/scannet_test_data8316.npz'
+        TEST_PATH  = 'data/scannet/test_files.txt'
         TEST_DATASET = ScanNetDataLoader(TEST_PATH, npoint=args.num_point, split='test',
                                                             normal_channel=args.normal)
     testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=1, shuffle=False, num_workers=4)
@@ -312,16 +307,6 @@ def main(args):
     classifier = classifier.eval()
     classifier_0.eval()
 
-    # # kaidong debug test
-    # with torch.no_grad():
-    #     instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class)
-    #     log_string('Test Instance Accuracy: %f, Class Accuracy: %f'% (instance_acc, class_acc))
-
-    # global_epoch = 0
-    # global_step = 0
-    # best_instance_acc = 0.0
-    # best_class_acc = 0.0
-    # mean_correct = []
     attack_timer = []
     pert_list = []
     cloud_list = []
@@ -390,19 +375,8 @@ def main(args):
         if batch_id % 10 == 0:
             log_string('%d done, success rate: %f, test accu.: %f' % (visit, (correct_ori-correct)/correct_ori, correct/visit))
 
-        # import pdb; pdb.set_trace()
-        # log_string("{}_{}_{} attacked.".format(victim,args.target,j))
-        # np.save(os.path.join(atk_dir, '{}_{}_{}_adv.npy' .format(victim,args.target,j)), img)
-        # np.save(os.path.join(atk_dir, '{}_{}_{}_adv_f.npy' .format(victim,args.target,j)), img_f[0])
-        # np.save(os.path.join(atk_dir, '{}_{}_{}_orig.npy' .format(victim,args.target,j)),images)#dump originial example for comparison
-        # np.save(os.path.join(atk_dir, '{}_{}_{}_pred.npy' .format(victim,args.target,j)),preds)
-        # if args.model == 'lattice_cls':
-        #     np.save(os.path.join(atk_dir, '{}_{}_{}_2dimg.npy' .format(victim,args.target,j)), img_2d)
-
     log_string('success rate: %f, test accu.: %f' % ((correct_ori-correct)/correct_ori, correct/visit))
     log_string('Attack Mean Time: %fs on %d point clouds, %d orig correct, %d successfully attacked'% (sum(attack_timer)/len(attack_timer), visit, correct_ori, (correct_ori-correct)))
-
-    # import pdb; pdb.set_trace()
 
     cloud_list = np.concatenate(cloud_list, axis=0)
     pert_list = np.concatenate(pert_list, axis=0)

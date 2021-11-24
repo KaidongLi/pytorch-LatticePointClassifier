@@ -1,7 +1,3 @@
-"""
-Author: Benny
-Date: Nov 2019
-"""
 from data_utils.ModelNetDataLoader import ModelNetDataLoader
 from data_utils.PCAModelNetDataLoader import PCAModelNetDataLoader
 from data_utils.ScanNetDataLoader import ScanNetDataLoader
@@ -18,20 +14,14 @@ import provider
 import importlib
 import shutil
 
-from utils import get_backbone #, get_cifar_training, get_cifar_test
+from utils import get_backbone 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, 'models'))
 
-# SCALE_LOW = 2
-# SCALE_UP  = 2
-
 SCALE_LOW = 30
 SCALE_UP  = 32
-
-# SCALE_LOW = 150
-# SCALE_UP  = 192
 
 
 def parse_args():
@@ -70,7 +60,7 @@ def test(model, loader, num_class=40):
         # timer ends
         for cat in np.unique(target.cpu()):
 
-            # kaidong mod: resolve tensor cannot be (target==cat) eq() to a numpy bug
+            # resolve tensor cannot be (target==cat) eq() to a numpy bug
             cat = cat.item()
 
             classacc = pred_choice[target==cat].eq(target[target==cat].long().data).cpu().sum()
@@ -151,10 +141,8 @@ def main(args):
     elif args.dataset == 'ScanNetCls':
         assert (not args.pca), 'ScanNetCls with PCA is not supported yet'
 
-        TRAIN_PATH = '/dev/shm/data/scannet/train_files.txt'
-        # TRAIN_PATH = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/train_files.txt'
-        TEST_PATH  = 'dump/scannet_test_data8316.npz'
-        # TEST_PATH  = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/test_files.txt'
+        # TEST_PATH  = 'dump/scannet_test_data8316.npz'
+        TEST_PATH  = 'data/scannet/test_files.txt'
         TRAIN_DATASET = ScanNetDataLoader(TRAIN_PATH, npoint=args.num_point, split='train',
                                                          normal_channel=args.normal)
         TEST_DATASET = ScanNetDataLoader(TEST_PATH, npoint=args.num_point, split='test',
@@ -167,18 +155,6 @@ def main(args):
     trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=args.batch_size, shuffle=True, num_workers=4)
     testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
-
-    # trainDataLoader = get_cifar_training(
-    #     (0.5070751592371323, 0.48654887331495095, 0.4409178433670343),
-    #     (0.2673342858792401, 0.2564384629170883, 0.27615047132568404),
-    #     num_workers=4, batch_size=args.batch_size, shuffle=True
-    # )
-
-    # testDataLoader = get_cifar_test(
-    #     (0.5070751592371323, 0.48654887331495095, 0.4409178433670343),
-    #     (0.2673342858792401, 0.2564384629170883, 0.27615047132568404),
-    #     num_workers=4, batch_size=args.batch_size, shuffle=False
-    # )
 
     '''MODEL LOADING'''
     num_class = args.num_cls
@@ -281,19 +257,6 @@ def main(args):
     for epoch in range(start_epoch,args.epoch):
         log_string('Epoch %d (%d/%s):' % (global_epoch + 1, epoch + 1, args.epoch))
 
-        # kaidong debug test
-        # with torch.no_grad():
-        #     instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class)
-
-        #     if (instance_acc >= best_instance_acc):
-        #         best_instance_acc = instance_acc
-        #         best_epoch = epoch + 1
-
-        #     if (class_acc >= best_class_acc):
-        #         best_class_acc = class_acc
-        #     log_string('Test Instance Accuracy: %f, Class Accuracy: %f'% (instance_acc, class_acc))
-        #     log_string('Best Instance Accuracy: %f, Class Accuracy: %f'% (best_instance_acc, best_class_acc))
-
         scheduler.step()
         pbar = tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9)
         # for batch_id, data in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9):
@@ -312,18 +275,6 @@ def main(args):
                 points = points.cuda()
                 points[:,:,:3] = provider.random_rotate_pc_3axis(points[:,:,:3])
                 points = points.cpu()
-
-            # import pdb; pdb.set_trace()
-            #
-            # np.save(os.path.join(vis_dir, 'pc_'+str(global_step)+'_bf_rot'),
-            #     points.cpu().data.numpy()
-            # )
-
-
-            # np.save(os.path.join(vis_dir, 'pc_'+str(global_step)+'_orig'),
-            #     points.data.numpy()
-            # )
-
 
 
             target = target[:, 0]
@@ -353,67 +304,12 @@ def main(args):
                         print(name, param.data)
 
 
-            # aa, bb, cc = torch.pca_lowrank(points.transpose(2, 1))
-
-            # kaidong test
-            # import pdb; pdb.set_trace()
-
-            # np.save(os.path.join(vis_dir, 'pc_'+str(global_step)+'_orig'),
-            #     # points.permute(0, 2, 3, 1).cpu().data.numpy()
-            #     points.permute(0, 2, 1).cpu().data.numpy()
-            #     # points.cpu().data.numpy()
-            # )
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_veceigen'),
-            #     cc.cpu().data.numpy()
-            # )
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_valeigen'),
-            #     bb.cpu().data.numpy()
-            # )
-
-            # np.save(os.path.join(vis_dir, 'pc_'+str(global_step)+'_rot'),
-            #     # points.permute(0, 2, 3, 1).cpu().data.numpy()
-            #     _[1].permute(0, 2, 1).cpu().data.numpy()
-            #     # points.cpu().data.numpy()
-            # )
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_rot_veceigen'),
-            #     ccc.cpu().data.numpy()
-            # )
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_rot_valeigen'),
-            #     bbb.cpu().data.numpy()
-            # )
-            # np.save(os.path.join(vis_dir, 'pc_'+str(global_step)+'_3dlat'),
-            #     _[1].permute(0, 2, 1).cpu().data.numpy()
-            # )
-            # np.save(os.path.join(vis_dir, 'pc_'+str(global_step)+'_2dimg'),
-            #     # _[0].permute(0, 2, 3, 1).cpu().data.numpy()
-            #     _[0].cpu().data.numpy()
-            # )
-            # np.save(os.path.join(log_dir, 'l_'+str(global_step)+'_sparse_lat'),
-            #     _[0].permute(0, 2, 3, 1).cpu().data.numpy()
-            # )
-
-
-
-            # # kaidong test
-
-            # pred, trans_feat = classifier(points)
-            # loss = criterion(pred, target.long(), trans_feat)
-
-
-
             pred_choice = pred.data.max(1)[1]
             correct = pred_choice.eq(target.long().data).cpu().sum()
             mean_correct.append(correct.item() / float(points.size()[0]))
             loss.backward()
             optimizer.step()
             global_step += 1
-
-
-
-            # kaidong test
-            # if global_step > 5:
-            #     global_step = 0
-            #     break
 
         train_instance_acc = np.mean(mean_correct)
         log_string('Train Instance Accuracy: %f' % train_instance_acc)

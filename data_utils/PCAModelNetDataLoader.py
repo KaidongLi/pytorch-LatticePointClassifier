@@ -53,7 +53,7 @@ class RotatePCA(object):
             y = torch.from_numpy(pc).unsqueeze(dim=0)
             pc1 = y.transpose(2, 1)
 
-            # kaidong: get the least important direction
+            # get the least important direction
             aa, bb, cc = torch.pca_lowrank(y)
             vec_low = cc[:, :, -1]
 

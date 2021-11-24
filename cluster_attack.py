@@ -97,7 +97,7 @@ def test(model, loader, num_class=40):
         # import pdb; pdb.set_trace()
         for cat in np.unique(target.cpu()):
 
-            # kaidong mod: resolve tensor cannot be (target==cat) eq() to a numpy bug
+            # resolve tensor cannot be (target==cat) eq() to a numpy bug
             cat = cat.item()
 
             classacc = pred_choice[target==cat].eq(target[target==cat].long().data).cpu().sum()
@@ -206,14 +206,13 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
     init_points_list = []
 
     if args.dataset == 'ModelNet40':
-        DATA_PATH = '/dev/shm/data/modelnet40/'
-        # DATA_PATH = 'data/modelnet40_normal_resampled/'
+        # DATA_PATH = '/dev/shm/data/modelnet40/'
+        DATA_PATH = 'data/modelnet40_normal_resampled/'
         TARGET_DATASET = AttackModelNetLoader(root=DATA_PATH, npoint=args.num_point, split='test',
                                                         normal_channel=args.normal, victim=args.target, target=args.target)
     elif args.dataset == 'ScanNetCls':
-        TEST_PATH  = 'dump/scannet_test_data8316.npz'
-        # TEST_PATH  = '/dev/shm/data/scannet/test_files.txt'
-        # TEST_PATH  = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/test_files.txt'
+        # TEST_PATH  = 'dump/scannet_test_data8316.npz'
+        TEST_PATH  = 'data/scannet/test_files.txt'
         TARGET_DATASET = AttackScanNetLoader(TEST_PATH, npoint=args.num_point, split='test',
                                                         normal_channel=args.normal, victim=args.target, target=args.target)
 
@@ -309,15 +308,6 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
         prev = 1e6
 
         for iteration in range(NUM_ITERATIONS):
-            # pre-process point cloud
-            # points = points.data.numpy()
-            # points = provider.random_point_dropout(points)
-            # points[:,:, 0:3] = provider.random_scale_point_cloud(points[:,:, 0:3], 0.8, 1.)
-            # points[:,:, 0:3] = provider.shift_point_cloud(points[:,:, 0:3])
-            # points = torch.Tensor(points)
-
-
-            # pert = torch.normal(0, 0.0000001, size=(BATCH_SIZE,NUM_POINT,3))
 
 
             # add perturbation
@@ -418,7 +408,7 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
                     if b_step[e] == -1:
                         b_step[e] = out_step
                         b_iter[e] = iteration
-                # kaidong mods: no success yet, prepare to record least failure
+                # no success yet, prepare to record least failure
                 # only start record at the last binary step
                 if out_step == BINARY_SEARCH_STEP-1 and o_bestscore[e] != attacked_label[e] and dist > o_failDist[e]:
                     o_best_dists[e] = [dist_f, dist_h, dist]
@@ -444,14 +434,6 @@ def attack_one_batch(classifier, criterion, points_ori, attacked_label, args, op
 
     log_string(" Successfully generated adversarial exampleson {} of {} instances." .format(sum(lower_bound > 0), BATCH_SIZE))
     log_string('Best res on step %s iter %s. Train Mean Time: %fms, batch size: %d'% (str(b_step), str(b_iter), sum(train_timer)/len(train_timer), BATCH_SIZE))
-    # import pdb; pdb.set_trace()
-
-    # for e in range(BATCH_SIZE):
-    #     if o_bestscore[e] != attacked_label[e]:
-    #         o_bestscore[e] = o_failPred[e]
-    #         o_bestdist[e] = o_failDist[e]
-    #         o_bestattack[e] = o_leastFailAttack[e]
-    #         o_bestadd[e] = o_failadd[e]
 
     return o_bestdist, o_bestattack, o_bestscore, o_bestadd, [init_add_pts_np, o_failadd, o_record2D, o_best_dists]
 
@@ -464,17 +446,6 @@ def main(args):
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     global CLASS_ATTACK
 
-    '''CREATE DIR'''
-    # timestr = str(datetime.datetime.now().strftime('%Y-%m-%d_%H-%M'))
-    # experiment_dir = Path('./log/')
-    # experiment_dir.mkdir(exist_ok=True)
-    # experiment_dir = experiment_dir.joinpath('perturbation')
-    # experiment_dir.mkdir(exist_ok=True)
-    # if args.log_dir is None:
-    #     experiment_dir = experiment_dir.joinpath(timestr)
-    # else:
-    #     experiment_dir = experiment_dir.joinpath(args.log_dir)
-    # experiment_dir.mkdir(exist_ok=True)
     checkpoints_dir = experiment_dir.joinpath('checkpoints/')
     checkpoints_dir.mkdir(exist_ok=True)
     # log_dir = experiment_dir.joinpath('logs/')
@@ -482,15 +453,6 @@ def main(args):
     atk_dir = experiment_dir.joinpath('attacked_cluster%s/' % (args.file_affix))
     atk_dir.mkdir(exist_ok=True)
 
-    '''LOG'''
-    # args = parse_args()
-    # logger = logging.getLogger("Model")
-    # logger.setLevel(logging.INFO)
-    # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    # file_handler = logging.FileHandler('%s/%s.txt' % (log_dir, args.model))
-    # file_handler.setLevel(logging.INFO)
-    # file_handler.setFormatter(formatter)
-    # logger.addHandler(file_handler)
     log_string('PARAMETER ...')
     log_string(args)
 
@@ -539,16 +501,6 @@ def main(args):
         start_epoch = 0
     classifier.eval()
 
-
-    # TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
-    #                                                 normal_channel=args.normal)
-    # testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
-
-    # # kaidong debug test
-    # with torch.no_grad():
-    #     instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class)
-    #     log_string('Test Instance Accuracy: %f, Class Accuracy: %f'% (instance_acc, class_acc))
-
     global_epoch = 0
     global_step = 0
     best_instance_acc = 0.0
@@ -567,26 +519,17 @@ def main(args):
             continue
 
         if args.dataset == 'ModelNet40':
-            DATA_PATH = '/dev/shm/data/modelnet40/'
-            # DATA_PATH = 'data/modelnet40_normal_resampled/'
-            # TRAIN_DATASET = AttackModelNetLoader(root=DATA_PATH, npoint=args.num_point, split='train',
-            #                                              normal_channel=args.normal, victim=victim, target=args.target)
+            # DATA_PATH = '/dev/shm/data/modelnet40/'
+            DATA_PATH = 'data/modelnet40_normal_resampled/'
             TEST_DATASET = AttackModelNetLoader(root=DATA_PATH, npoint=args.num_point, split='test',
                                                             normal_channel=args.normal, victim=victim, target=args.target)
         elif args.dataset == 'ScanNetCls':
-            # TRAIN_PATH = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/train_files.txt'
-            TEST_PATH  = 'dump/scannet_test_data8316.npz'
-            # TEST_PATH  = '/dev/shm/data/scannet/test_files.txt'
-            # TEST_PATH  = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/test_files.txt'
-            # TRAIN_DATASET = ScanNetDataLoader(TRAIN_PATH, npoint=args.num_point, split='train',
-            #                                                  normal_channel=args.normal)
+            # TEST_PATH  = 'dump/scannet_test_data8316.npz'
+            TEST_PATH  = 'data/scannet/test_files.txt'
             TEST_DATASET = AttackScanNetLoader(TEST_PATH, npoint=args.num_point, split='test',
                                                             normal_channel=args.normal, victim=victim, target=args.target)
 
-        # trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
         testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=args.batch_size, shuffle=False, num_workers=4)
-
-        # test(classifier, trainDataLoader)
 
         batch_iterator = iter(testDataLoader)
 

@@ -40,29 +40,19 @@ def log_only_string(str):
 def parse_args():
     '''PARAMETERS'''
     parser = argparse.ArgumentParser('PointNet')
-    # parser.add_argument('--batch_size', type=int, default=24, help='batch size in training [default: 24]')
     parser.add_argument('--model', default='pointnet_cls', help='model name [default: pointnet_cls]')
-    # parser.add_argument('--epoch',  default=200, type=int, help='number of epoch in training [default: 200]')
     parser.add_argument('--eps', default=0.1, type=float, help='learning rate in training [default: 0.1]')
     parser.add_argument('--eps_iter', default=0.01, type=float, help='learning rate in training [default: 0.01]')
     parser.add_argument('--learning_rate', default=0.1, type=float, help='learning rate in training [default: 0.1]')
     parser.add_argument('--gpu', type=str, default='0', help='specify gpu device [default: 0]')
     parser.add_argument('--num_point', type=int, default=1024, help='Point Number [default: 1024]')
-    # parser.add_argument('--optimizer', type=str, default='Adam', help='optimizer for training [default: Adam]')
     parser.add_argument('--log_dir', type=str, default=None, help='experiment root')
-    # parser.add_argument('--decay_rate', type=float, default=1e-4, help='decay rate [default: 1e-4]')
     parser.add_argument('--normal', action='store_true', default=False, help='Whether to use normal information [default: False]')
-    # parser.add_argument('--num_sample', type=int, default=25, help='number of samples per class [default: 25]')
     parser.add_argument('--file_affix', type=str, default='', help='log file/save folder affix')
     parser.add_argument('--dataset', default='ModelNet40', help='dataset name [default: ModelNet40]')
     parser.add_argument('--num_cls', type=int, default=40, help='Number of classes [default: 40]')
 
-
-    # parser.add_argument('--target', type=int, default=5, help='target class index')
-    # parser.add_argument('--initial_weight', type=float, default=10, help='initial value for the parameter lambda')
-    # parser.add_argument('--upper_bound_weight', type=float, default=80, help='upper_bound value for the parameter lambda')
     parser.add_argument('--n', type=int, default=40, help='step')
-    # parser.add_argument('--num_iter', type=int, default=500, help='number of iterations for each binary search step')
 
     parser.add_argument('--backbone', default='resnet50', help='backbone network name [default: resnet50]')
     parser.add_argument('--dim', type=int, default=128, help='size of final 2d image [default: 128]')
@@ -83,11 +73,9 @@ def test(model, loader, num_class=40):
         classifier = model.eval()
         pred, _ = classifier(points)
         pred_choice = pred.data.max(1)[1]
-        # print(pred_choice)
-        # import pdb; pdb.set_trace()
         for cat in np.unique(target.cpu()):
 
-            # kaidong mod: resolve tensor cannot be (target==cat) eq() to a numpy bug
+            # resolve tensor cannot be (target==cat) eq() to a numpy bug
             cat = cat.item()
 
             classacc = pred_choice[target==cat].eq(target[target==cat].long().data).cpu().sum()
@@ -129,12 +117,6 @@ def FGSM(classifier, criterion, points, targets, args):
 
     st = datetime.datetime.now().timestamp() - st
     return perturbed_data.transpose(2, 1)[0].cpu().data.numpy(), st
-
-    # output, _ = classifier(perturbed_data)
-    #
-    # pred_choice = output.data.max(1)[1]
-    #
-    # return perturbed_data.cpu().data.numpy(), pred_choice.cpu(), st
 
 
 nbrs = NearestNeighbors(n_neighbors=TOP_K+1, algorithm='auto', metric='euclidean', n_jobs=-1)
@@ -222,17 +204,6 @@ def main(args):
     '''HYPER PARAMETER'''
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
-    '''CREATE DIR'''
-    # timestr = str(datetime.datetime.now().strftime('%Y-%m-%d_%H-%M'))
-    # experiment_dir = Path('./log/')
-    # experiment_dir.mkdir(exist_ok=True)
-    # experiment_dir = experiment_dir.joinpath('perturbation')
-    # experiment_dir.mkdir(exist_ok=True)
-    # if args.log_dir is None:
-    #     experiment_dir = experiment_dir.joinpath(timestr)
-    # else:
-    #     experiment_dir = experiment_dir.joinpath(args.log_dir)
-    # experiment_dir.mkdir(exist_ok=True)
     checkpoints_dir = experiment_dir.joinpath('checkpoints/')
     checkpoints_dir.mkdir(exist_ok=True)
     # log_dir = experiment_dir.joinpath('logs/')
@@ -242,13 +213,6 @@ def main(args):
 
     '''LOG'''
     args = parse_args()
-    # logger = logging.getLogger("Model")
-    # logger.setLevel(logging.INFO)
-    # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    # file_handler = logging.FileHandler('%s/%s.txt' % (log_dir, args.model))
-    # file_handler.setLevel(logging.INFO)
-    # file_handler.setFormatter(formatter)
-    # logger.addHandler(file_handler)
     log_string('PARAMETER ...')
     log_string(args)
 
@@ -258,16 +222,11 @@ def main(args):
 
     if args.dataset == 'ModelNet40':
         DATA_PATH = 'data/modelnet40_normal_resampled/'
-        # TRAIN_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='train',
-        #                                                  normal_channel=args.normal)
         TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_point, split='test',
                                                         normal_channel=args.normal)
     elif args.dataset == 'ScanNetCls':
-        # TRAIN_PATH = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/train_files.txt'
-        TEST_PATH  = 'dump/scannet_test_data8316.npz'
-        # TEST_PATH  = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/test_files.txt'
-        # TRAIN_DATASET = ScanNetDataLoader(TRAIN_PATH, npoint=args.num_point, split='train',
-        #                                                  normal_channel=args.normal)
+        # TEST_PATH  = 'dump/scannet_test_data8316.npz'
+        TEST_PATH  = 'data/scannet/test_files.txt'
         TEST_DATASET = ScanNetDataLoader(TEST_PATH, npoint=args.num_point, split='test',
                                                             normal_channel=args.normal)
     testDataLoader = torch.utils.data.DataLoader(TEST_DATASET, batch_size=1, shuffle=False, num_workers=4)
@@ -279,10 +238,6 @@ def main(args):
     MODEL = importlib.import_module(args.model)
     shutil.copy('./models/%s.py' % args.model, str(experiment_dir))
     shutil.copy('./models/pointnet_util.py', str(experiment_dir))
-
-    # classifier = MODEL.get_model(num_class,normal_channel=args.normal).cuda()
-    # classifier = MODEL.get_model(num_class,normal_channel=args.normal,s=128*3).cuda()
-
 
     if args.model == 'lattice_cls':
         classifier = MODEL.get_model(num_class,
@@ -318,17 +273,6 @@ def main(args):
         start_epoch = 0
 
     classifier = classifier.eval()
-
-    # # kaidong debug test
-    # with torch.no_grad():
-    #     instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class)
-    #     log_string('Test Instance Accuracy: %f, Class Accuracy: %f'% (instance_acc, class_acc))
-
-    # global_epoch = 0
-    # global_step = 0
-    # best_instance_acc = 0.0
-    # best_class_acc = 0.0
-    # mean_correct = []
     attack_timer = []
     pert_list = []
     cloud_list = []
@@ -386,15 +330,6 @@ def main(args):
 
         if batch_id % 10 == 0:
             log_string('%d done, success rate: %f, test accu.: %f' % (visit, (correct_ori-correct)/correct_ori, correct/visit))
-
-        # import pdb; pdb.set_trace()
-        # log_string("{}_{}_{} attacked.".format(victim,args.target,j))
-        # np.save(os.path.join(atk_dir, '{}_{}_{}_adv.npy' .format(victim,args.target,j)), img)
-        # np.save(os.path.join(atk_dir, '{}_{}_{}_adv_f.npy' .format(victim,args.target,j)), img_f[0])
-        # np.save(os.path.join(atk_dir, '{}_{}_{}_orig.npy' .format(victim,args.target,j)),images)#dump originial example for comparison
-        # np.save(os.path.join(atk_dir, '{}_{}_{}_pred.npy' .format(victim,args.target,j)),preds)
-        # if args.model == 'lattice_cls':
-        #     np.save(os.path.join(atk_dir, '{}_{}_{}_2dimg.npy' .format(victim,args.target,j)), img_2d)
 
     log_string('success rate: %f, test accu.: %f' % ((correct_ori-correct)/correct_ori, correct/visit))
     log_string('Attack Mean Time: %fs on %d point clouds, %d orig correct, %d successfully attacked'% (sum(attack_timer)/len(attack_timer), visit, correct_ori, (correct_ori-correct)))

@@ -345,33 +345,7 @@ if __name__ == '__main__':
                         dnn_conf['alpha']
                     )
         model = model.to(device) 
-        # model = nn.DataParallel(model)
-
-    # elif args.model == 'pointnet2':
-    #     model = PointNet2ClsMsg(num_classes)
-    #     model = model.to(device)
-    #     model = nn.DataParallel(model)
-    # elif args.model == 'dgcnn':
-    #     model = DGCNN(num_classes)
-    #     model = model.to(device) 
-    #     model = nn.DataParallel(model)
-    # elif args.model == 'pointcnn':
-    #     model = PointCNNCls(num_classes)
-    #     model = model.to(device) 
-    #     model = nn.DataParallel(model)
-    # elif args.model == 'rscnn':
-    #     from models.rscnn import RSCNN
-    #     import models.rscnn_utils.pointnet2_utils as pointnet2_utils
-    #     model = RSCNN(num_classes)
-    #     model = model.to(device) 
-    #     model = nn.DataParallel(model)
-
-    # if args.model == 'lattice_cls':
-    #     state_dict = {}
-    #     for key in checkpoint['model_state_dict'].keys():
-    #         state_dict['module.'+key] = checkpoint['model_state_dict'][key]
-    #     model.load_state_dict(state_dict)
-    # el
+        
     if args.model == 'dupnet':
         model.pnet_cls.load_state_dict(checkpoint['model_state_dict'])
         checkpoint_0 = '%s/pu-in_1024-up_4.pth'%DIR_LOG
@@ -384,17 +358,15 @@ if __name__ == '__main__':
     print('Successfully loaded!')
     # print('Stored test accuracy %.3f%%' % checkpoint['acc_list'][-1])
     if args.data == 'modelnet40': 
-        DATA_PATH = '/dev/shm/data/modelnet40/'
-        # DATA_PATH = 'data/modelnet40_normal_resampled/'
+        # DATA_PATH = '/dev/shm/data/modelnet40/'
+        DATA_PATH = 'data/modelnet40_normal_resampled/'
         TEST_DATASET = ModelNetDataLoader(root=DATA_PATH, npoint=args.num_points, split='test',
                                                         normal_channel=False)
-        # data = ModelNet40(partition='test', num_points=args.num_points, transforms=normalize())
     elif args.data == 'shapenetpart':
         TEST_DATASET = ShapeNetPart(partition='test', num_points=args.num_points, transforms=normalize())
     elif args.data == 'ScanNetCls':
-        TEST_PATH  = 'dump/scannet_test_data8316.npz'
-        # TEST_PATH  = '/dev/shm/data/scannet/test_files.txt'
-        # TEST_PATH  = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/test_files.txt'
+        # TEST_PATH  = 'dump/scannet_test_data8316.npz'
+        TEST_PATH  = 'data/scannet/test_files.txt'
         TEST_DATASET = ScanNetDataLoader(TEST_PATH, npoint=args.num_points, split='test',
                                                             normal_channel=False)
     attack_loader = DataLoader(TEST_DATASET, num_workers=4,

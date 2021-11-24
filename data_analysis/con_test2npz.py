@@ -84,8 +84,8 @@ def main(args):
     elif args.dataset == 'ScanNetCls':
         assert (not args.pca), 'ScanNetCls with PCA is not supported yet'
 
-        TEST_PATH  = 'dump/scannet_test_data8316.npz'
-        # TEST_PATH  = '/scratch/kaidong/tf-point-cnn/data/test_scan_in/test_files.txt'
+        # TEST_PATH  = 'dump/scannet_test_data8316.npz'
+        TEST_PATH  = 'data/scannet/test_files.txt'
         TEST_DATASET = ScanNetDataLoader(TEST_PATH, npoint=args.num_point, split='test',
                                                             normal_channel=args.normal)
 

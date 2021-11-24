@@ -47,21 +47,11 @@ sparse_sum = SparseSum.apply
 
 class get_model(nn.Module):
 
-    # kaidong: test
     # s is the final image scale
     def __init__(self, k=40, normal_channel=True, backbone=resnet50(40), s=128*3):
         super(get_model, self).__init__()
 
 
-        # if normal_channel:
-        #     channel = 6
-        # else:
-        #     channel = 3
-        # self.pnt_tnet = STN3d(channel)
-
-
-
-        # self.pca_rotate = RotatePCA()
         self.lat_transform = LatticeGen(s, normal_channel)
         self.size2d = s
         self.network_2d = backbone
@@ -69,38 +59,7 @@ class get_model(nn.Module):
         self.normal_channel = normal_channel
 
 
-
-
-        # if normal_channel:
-        #     channel = 6
-        # else:
-        #     channel = 3
-        # self.feat = PointNetEncoder(global_feat=True, feature_transform=True, channel=channel)
-        # self.fc1 = nn.Linear(1024, 512)
-        # self.fc2 = nn.Linear(512, 256)
-        # self.fc3 = nn.Linear(256, k)
-        # self.dropout = nn.Dropout(p=0.4)
-        # self.bn1 = nn.BatchNorm1d(512)
-        # self.bn2 = nn.BatchNorm1d(256)
-        # self.relu = nn.ReLU()
-
     def forward(self, x):
-        # import pdb; pdb.set_trace()
-
-        # B, D, N = x.size()
-        # trans = self.pnt_tnet(x)
-
-        # x = x.transpose(2, 1)
-        # if D >3 :
-        #     x, feature = x.split(3,dim=2)
-        # x = torch.bmm(x, trans)
-        # if D > 3:
-        #     x = torch.cat([x,feature],dim=2)
-        # x = x.transpose(2, 1)
-
-
-        # x = self.pca_rotate(x)
-
         if self.normal_channel:
             vv = x[:, 3:]
             # vv = x[:, :3]
@@ -125,14 +84,6 @@ class get_model(nn.Module):
 
         return outputs, [_[0], _[1]]#[_[0].permute(0, 3, 1, 2), splatted_2d, _[1], st]
 
-
-
-        # x, trans, trans_feat = self.feat(x)
-        # x = F.relu(self.bn1(self.fc1(x)))
-        # x = F.relu(self.bn2(self.dropout(self.fc2(x))))
-        # x = self.fc3(x)
-        # x = F.log_softmax(x, dim=1)
-        # return x, trans_feat
 
 
 class get_adv_loss(torch.nn.Module):
@@ -180,26 +131,9 @@ class LatticeGen(nn.Module):
         self.d1 = self.d
         self.size2d = s
         self.normal_channel = normal_channel
-        # self.scales_filter_map = args.scales_filter_map
-
-        # elevate_left = torch.ones((self.d1, self.d), dtype=torch.float32).triu()
-        # elevate_left[1:, ] += torch.diag(torch.arange(-1, -d - 1, -1, dtype=torch.float32))
-        # elevate_right = torch.diag(1. / (torch.arange(1, d + 1, dtype=torch.float32) *
-        #                                  torch.arange(2, d + 2, dtype=torch.float32)).sqrt())
-        # self.expected_std = (d + 1) * math.sqrt(2 / 3)
-        # self.elevate_mat = torch.mm(elevate_left, elevate_right).cuda()
-        # (d+1,d)
-        # del elevate_left, elevate_right
 
 
         self.elevate_mat = (torch.FloatTensor([[2, -1, -1], [-1, 2, -1], [-1, -1, 2]]) / torch.tensor(6.).sqrt() ).cuda()
-        # self.elevate_mat2 = F.normalize(torch.FloatTensor([[8, -7, -1], [-1, -1, 2], [-7, 8, -1]]), dim=0).cuda()
-
-
-        # kaidong: transfer to 2d
-        # d = 1
-        # self.d = d
-        # self.d1 = self.d + 1
 
         # canonical
         canonical = torch.arange(self.d1, dtype=torch.long)[None, :].repeat(self.d1, 1)
@@ -210,16 +144,6 @@ class LatticeGen(nn.Module):
 
         self.dim_indices = torch.arange(self.d1, dtype=torch.long)[:, None].cuda()
 
-        # self.radius2offset = {}
-        # radius_set = set([item for line in self.scales_filter_map for item in line[1:] if item != -1])
-
-        # for radius in radius_set:
-        #     hash_table = []
-        #     center = np.array([0] * self.d1, dtype=np.long)
-
-        #     traversal = Traverse(radius, self.d)
-        #     traversal.go(center, hash_table)
-        #     self.radius2offset[radius] = np.vstack(hash_table)
 
     def get_keys_and_barycentric(self, pc, is_2nd_trans=False):
         """
@@ -237,26 +161,10 @@ class LatticeGen(nn.Module):
         	# elevated = torch.matmul(self.elevate_mat, pc) * self.expected_std  # (d+1, N)
         	elevated = torch.matmul(self.elevate_mat, pc) # * self.expected_std  # (d+1, N)
 
-        # kaidong: to 2d
-        # elevated = elevated[:, :self.d1, :] # * self.expected_std  # (d+1, N)
-
-        # kaidong TODO
-        ### if FloatTensor: round sometimes rounds to wrong integer
-        ### using DoubleTensor to have more precise rounding, and convert back to have better result
-        # it's rounding correctly
-        # find 0-remainder
         greedy = (torch.round(elevated / self.d1) * self.d1)  # (d+1, N)
 
-        # greedy = elevated // self.d1 * self.d1
-        # el_minus_gr = elevated - greedy
-        # greedy[el_minus_gr > (self.d1/2)] += self.d1
-        # greedy[el_minus_gr < (-self.d1/2)] -= self.d1
 
         el_minus_gr = elevated - greedy
-
-
-        # kaidong test
-        # import pdb; pdb.set_trace()
 
 
         rank = torch.sort(el_minus_gr, dim=1, descending=True)[1]
@@ -313,15 +221,11 @@ class LatticeGen(nn.Module):
     def convert2Dcoord(self, coord, batch_size, num_pts):
         offset = coord.min(dim=2)[0]
 
-        # kaidong test
-        # import pdb; pdb.set_trace()
-
         coord -= offset.view(batch_size, -1, 1).expand(batch_size, -1, self.d1*num_pts)
         pts_pick = (-offset) % 3
         return coord, pts_pick
 
     def get2D(self, coord, tmp, pts_pick, batch_size):
-    	# kaidong mod
         # remove points that are out of range in 2d image
         idx_out_range = coord >= self.size2d
         c = tmp.size(-1)
@@ -335,15 +239,6 @@ class LatticeGen(nn.Module):
         filter_2d = torch.zeros((batch_size, self.size2d//self.d1, self.size2d//self.d1, c), dtype=torch.float32).cuda()
 
         for i in range(batch_size):
-            # coord: [d, d * num]
-            # d: d-coordinate; d * num: vertices of simplex * number of points
-            # in_barycentric: [batch, d, num]
-            # d: 0- 1- 2- 3-... remainder points
-            # splatted = sparse_sum(coord, in_barycentric.view(-1),
-            #                       None, args.DEVICE == 'cuda')
-
-            # splatted_2d[i] = sparse_sum(coord[i], tmp[i],
-            #                       torch.Size([self.size2d, self.size2d, c]), True)
             splatted_2d[i] = torch.cuda.sparse.FloatTensor(coord[i], tmp[i],
                                   torch.Size([self.size2d, self.size2d, c])).to_dense()
             # import pdb; pdb.set_trace()
@@ -354,18 +249,12 @@ class LatticeGen(nn.Module):
         #     # filter_2d[filter_2d>cutoff] = cutoff
         #     filter_2d[filter_2d>0] = 1.0
 
-        # kaidong test
-        # import pdb; pdb.set_trace()
-
         return filter_2d
 
 
 
     def forward(self, pc1, features):
         # with torch.no_grad():
-            # kaidong test
-            # import pdb; pdb.set_trace()
-
             # keys, bary, el_minus_gr = self.get_single(pc1[0])
             keys, in_barycentric, _ = self.get_keys_and_barycentric(pc1)
             # keys2, in_barycentric2, _2 = self.get_keys_and_barycentric(pc1, True)
@@ -398,22 +287,6 @@ class LatticeGen(nn.Module):
 
 
 
-
-            # coord = keys2[:, :d].view(batch_size, d, -1)
-
-            # coord, pts_pick = self.convert2Dcoord(coord, batch_size, num_pts)
-
-            # # tmp: [batch, d, d, num]
-            # # d: coordinates of points; then d: vertices of each simplex
-            # tmp = in_barycentric2[:, None, :, :] * features[:, :, None, :]
-            # # tmp: [d, d * num]
-            # # d * num_pts: [d] + [d] + ... + [d]
-            # tmp = tmp.permute(0, 1, 3, 2).contiguous().view(batch_size, 3, -1).permute(0, 2, 1)
-
-            # filter_2d_2 = self.get2D(coord, tmp, pts_pick, batch_size)
-
-
-
             return filter_2d, None, [filter_2d, keys.view(batch_size, 3, -1)]
         # return filter_2d, filter_2d_2, [filter_2d]#[splatted_2d, keys.view(batch_size, 3, -1)]
 
@@ -425,12 +298,10 @@ class RotatePCA(nn.Module):
 
     def forward(self, pc1, features=None):
         # with torch.no_grad():
-            # kaidong test
-            # import pdb; pdb.set_trace()
 
             y = pc1.permute(0, 2, 1)
 
-            # kaidong: get the least important direction
+            # get the least important direction
             aa, bb, cc = torch.pca_lowrank(y)
             vec_low = cc[:, :, -1]
 
@@ -458,8 +329,3 @@ class RotatePCA(nn.Module):
 
             return rot_pts#.permute(0, 2, 1)
 
-
-    # def __repr__(self):
-    #     format_string = self.__class__.__name__ + '\n(scales_filter_map: {}\n'.format(self.scales_filter_map)
-    #     format_string += ')'
-    #     return format_string
