@@ -52,6 +52,7 @@ def parse_args():
     parser.add_argument('--dim', type=int, default=128, help='size of final 2d image [default: 128]')
     parser.add_argument('--dataset', default='ModelNet40', help='dataset name [default: ModelNet40]')
     parser.add_argument('--num_cls', type=int, default=40, help='Number of classes [default: 40]')
+    parser.add_argument('--pre_rotation', action='store_true', default=False, help='Whether to use random rotation [default: False]')
     return parser.parse_args()
 
 def test(model, loader, num_class=40):
@@ -305,7 +306,12 @@ def main(args):
             #     print('...')
             points[:,:, 0:3] = provider.shift_point_cloud(points[:,:, 0:3])
 
-            points = torch.Tensor(points).cuda()
+            points = torch.Tensor(points)
+
+            if args.pre_rotation:
+                points = points.cuda()
+                points[:,:,:3] = provider.random_rotate_pc_3axis(points[:,:,:3])
+                points = points.cpu()
 
             # import pdb; pdb.set_trace()
             #
@@ -313,8 +319,6 @@ def main(args):
             #     points.cpu().data.numpy()
             # )
 
-            points[:,:,:3] = provider.random_rotate_pc_3axis(points[:,:,:3])
-            points = points.cpu()
 
             # np.save(os.path.join(vis_dir, 'pc_'+str(global_step)+'_orig'),
             #     points.data.numpy()
