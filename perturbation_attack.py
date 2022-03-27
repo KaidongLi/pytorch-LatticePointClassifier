@@ -313,6 +313,10 @@ def main(args):
                         dnn_conf['robust_type'], 
                         dnn_conf['alpha']
                     ).cuda()
+    elif args.model == 'project_cls':
+        classifier = MODEL.get_model(num_class,
+            normal_channel=args.normal,
+            backbone=get_backbone(args.backbone, num_class, 1), s=args.dim).cuda()
     else:
         classifier = MODEL.get_model(num_class,normal_channel=args.normal).cuda()
 

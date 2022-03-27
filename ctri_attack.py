@@ -331,6 +331,14 @@ if __name__ == '__main__':
                 )
         model = model.to(device) 
         # model = nn.DataParallel(model)
+    elif args.model == 'if_defense':
+        from models.if_defense_full import IFDefense
+        model = IFDefense(
+                    importlib.import_module('pointnet_cls').get_model(num_classes,normal_channel=False),
+                    num_cls=num_classes, npoint=args.num_points, 
+                )
+        model = model.to(device) 
+        # model = nn.DataParallel(model)
     elif args.model == 'pointnet_ddn':
         dnn_conf = {
             'input_transform': False,
@@ -350,6 +358,9 @@ if __name__ == '__main__':
         model.pnet_cls.load_state_dict(checkpoint['model_state_dict'])
         checkpoint_0 = '%s/pu-in_1024-up_4.pth'%DIR_LOG
         model.dupnet.pu_net.load_state_dict( torch.load(checkpoint_0) )
+    elif args.model == 'if_defense':
+        model.pnet_cls.load_state_dict(checkpoint['model_state_dict'])
+        model.convonet.load_state_dict(torch.load('%s/convonet.pth'%DIR_LOG))
     else:
         model.load_state_dict(checkpoint['model_state_dict'])
 

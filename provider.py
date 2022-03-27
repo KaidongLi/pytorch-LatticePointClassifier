@@ -255,6 +255,7 @@ def random_rotate_pc_3axis(batch_data):
     rot = np.random.uniform(-np.pi, np.pi, (B,3))
     return rotate_pc_3axis(batch_data, rot)
 
+# point_cloud: (b, num, c)
 def rotate_pc_3axis(point_cloud,rotations):
     import torch
 

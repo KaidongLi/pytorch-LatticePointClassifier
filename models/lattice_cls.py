@@ -101,7 +101,6 @@ class get_adv_loss(torch.nn.Module):
         other = torch.max((1 - tlab) * pred - (tlab * 10000), dim=1)[0]
 
         loss1 = torch.maximum(torch.Tensor([0.]).cuda(), other - real + kappa)
-        # import pdb; pdb.set_trace()
         return torch.mean(loss1)
 
 
@@ -168,6 +167,7 @@ class LatticeGen(nn.Module):
 
 
         rank = torch.sort(el_minus_gr, dim=1, descending=True)[1]
+
         # the following advanced indexing is different in PyTorch 0.4.0 and 1.0.0
         #rank[rank, point_indices] = self.dim_indices  # works in PyTorch 0.4.0 but fail in PyTorch 1.x
         index = rank.clone()
@@ -201,9 +201,6 @@ class LatticeGen(nn.Module):
         barycentric /= self.d1
         barycentric[batch_indices, 0, point_indices] += 1. + barycentric[batch_indices, self.d1, point_indices]
         barycentric = barycentric[:, :-1, :]
-
-        # import pdb; pdb.set_trace()
-
         # canonical[rank, :]: [d1, num_pts, d1]
         #                     (d1 dim coordinates) then (d1 vertices of a simplex)
         keys = greedy[:, :, :, None] + self.canonical[rank, :]  # (d1, num_points, d1)
@@ -241,13 +238,12 @@ class LatticeGen(nn.Module):
         for i in range(batch_size):
             splatted_2d[i] = torch.cuda.sparse.FloatTensor(coord[i], tmp[i],
                                   torch.Size([self.size2d, self.size2d, c])).to_dense()
-            # import pdb; pdb.set_trace()
             filter_2d[i] = splatted_2d[i, pts_pick[i, 0]::self.d1, pts_pick[i, 1]::self.d1][:self.size2d//self.d1, :self.size2d//self.d1]
 
-        # if not self.normal_channel:
-        #     # cutoff = filter_2d[filter_2d>0].mean() * 2
-        #     # filter_2d[filter_2d>cutoff] = cutoff
-        #     filter_2d[filter_2d>0] = 1.0
+        if not self.normal_channel:
+            # cutoff = filter_2d[filter_2d>0].mean() * 2
+            # filter_2d[filter_2d>cutoff] = cutoff
+            filter_2d[filter_2d>0] = 1.0
 
         return filter_2d
 

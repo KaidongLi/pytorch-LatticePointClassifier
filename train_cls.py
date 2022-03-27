@@ -141,8 +141,9 @@ def main(args):
     elif args.dataset == 'ScanNetCls':
         assert (not args.pca), 'ScanNetCls with PCA is not supported yet'
 
-        # TEST_PATH  = 'dump/scannet_test_data8316.npz'
-        TEST_PATH  = 'data/scannet/test_files.txt'
+        TEST_PATH  = 'dump/scannet_test_data8316.npz'
+        TRAIN_PATH  = 'data/scannet/train_files.txt'
+        # TEST_PATH  = 'data/scannet/test_files.txt'
         TRAIN_DATASET = ScanNetDataLoader(TRAIN_PATH, npoint=args.num_point, split='train',
                                                          normal_channel=args.normal)
         TEST_DATASET = ScanNetDataLoader(TEST_PATH, npoint=args.num_point, split='test',
@@ -191,6 +192,10 @@ def main(args):
                         dnn_conf['alpha']
                     ).cuda()
         criterion = torch.nn.NLLLoss()
+    elif args.model == 'project_cls':
+        classifier = MODEL.get_model(num_class,
+            normal_channel=args.normal,
+            backbone=get_backbone(args.backbone, num_class, 1), s=args.dim).cuda()
     # classifier = MODEL.get_model(num_class,
     #     normal_channel=args.normal,
     #     backbone=get_backbone(args.backbone, num_class, 1)).cuda()

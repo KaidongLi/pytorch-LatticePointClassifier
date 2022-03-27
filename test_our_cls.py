@@ -53,7 +53,7 @@ def test(model, loader, dir_vis, num_class=40):
     class_acc = np.zeros((num_class,3))
     for j, data in tqdm(enumerate(loader), total=len(loader)):
 
-        # if j > 50 :
+        # if j > 100 :
         #     break
 
         points, target = data
