@@ -1,3 +1,7 @@
+'''
+Author: Kaidong Li
+Purpose: Lattice Point Classifier (LPC)
+'''
 import torch.nn as nn
 import torch.utils.data
 import torch.nn.functional as F
