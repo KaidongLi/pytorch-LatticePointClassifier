@@ -1,10 +1,25 @@
-# Pytorch Implementation of Lattice Point Classifier (LPC)
+# Robust Structured Declarative Classifiers for 3D Point Clouds: Defending Adversarial Attacks with Implicit Gradients
 
 Created by [Kaidong Li](https://www.linkedin.com/in/KaidongLi/), [Ziming Zhang](https://zhang-vislab.github.io/), [Cuncong Zhong](https://cbb.ittc.ku.edu/index.html), [Guanghui Wang](https://www.cs.ryerson.ca/~wangcs/)
 
-This repo is the official implementation for **Robust Structured Declarative Classifiers for 3D Point Clouds: Defending Adversarial Attacks with Implicit Gradients**. We study its classification and defense performances against some state-of-the-art adversarial attacks and compare the results with state-of-the-art defenses. 
+This repo is the official implementation of Lattice Point Classifier (LPC) for our CVPR 2022 paper [**Robust Structured Declarative Classifiers for 3D Point Clouds: Defending Adversarial Attacks with Implicit Gradients**](https://openaccess.thecvf.com/content/CVPR2022/papers/Li_Robust_Structured_Declarative_Classifiers_for_3D_Point_Clouds_Defending_Adversarial_CVPR_2022_paper.pdf). 
+
+We study its classification and defense performances against some state-of-the-art adversarial attacks and compare the results with state-of-the-art defenses. 
 
 We also collect the implementations of these 3D point cloud attacks ([FGSM](https://arxiv.org/pdf/1412.6572.pdf), [JGBA](https://dl.acm.org/doi/pdf/10.1145/3394171.3413875?casa_token=fk6eajSNqSwAAAAA:rqBCH1XnUfVdUrIFOL7nzMQ_gaEbLYFvQqs8IU9BABW7ge28AsVCtTILnancYZXKM_Z3EpOUVN1nAg), [Perturbation Add Cluster and Object Attacks](https://openaccess.thecvf.com/content_CVPR_2019/papers/Xiang_Generating_3D_Adversarial_Point_Clouds_CVPR_2019_paper.pdf), [CTRI](https://openaccess.thecvf.com/content_CVPR_2020/papers/Zhao_On_Isometry_Robustness_of_Deep_3D_Point_Cloud_Models_Under_CVPR_2020_paper.pdf)) and defenses ([DUP-Net](https://openaccess.thecvf.com/content_ICCV_2019/papers/Zhou_DUP-Net_Denoiser_and_Upsampler_Network_for_3D_Adversarial_Point_Clouds_ICCV_2019_paper.pdf), [IF-Defense](https://arxiv.org/pdf/2010.05272.pdf) and [RPL](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=9355027&casa_token=9kl6Y0dQ330AAAAA:6iZ47UV7veR7HvRXlkALeenfsiwe7qoqX3euYp-etvUj4Kw7xBAmUgD5p04bTVJeiZ2APXYSyXA&tag=1)) in this repository, in the hope of serving as a reference point for future research.
+
+
+## Citation
+If you find our work useful in your research, please consider citing:
+```
+@inproceedings{li2022robust,
+  title={Robust Structured Declarative Classifiers for 3D Point Clouds: Defending Adversarial Attacks with Implicit Gradients},
+  author={Li, Kaidong and Zhang, Ziming and Zhong, Cuncong and Wang, Guanghui},
+  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  pages={15294--15304},
+  year={2022}
+}
+```
 
 ## Environments
 We run our experiments under:
