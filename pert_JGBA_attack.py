@@ -261,6 +261,11 @@ def main(args):
         classifier = MODEL.get_model(num_class,
             normal_channel=args.normal,
             backbone=get_backbone(args.backbone, num_class, 1), s=args.dim).cuda()
+    elif args.model == 'graph_cls':
+        classifier = MODEL.get_model(num_class,
+            normal_channel=False,
+            backbone=get_backbone(args.backbone, num_class, 3)
+        ).cuda()
     else:
         classifier = MODEL.get_model(num_class,normal_channel=args.normal).cuda()
 
@@ -270,7 +275,10 @@ def main(args):
     try:
         checkpoint = torch.load(str(experiment_dir) + '/checkpoints/best_model.pth')
         start_epoch = checkpoint['epoch']
-        classifier.load_state_dict(checkpoint['model_state_dict'])
+        if args.model == 'graph_cls':
+            classifier.network_2d.load_state_dict(checkpoint['model_state_dict'])
+        else:
+            classifier.load_state_dict(checkpoint['model_state_dict'])
         log_string('Use pretrain model')
     except:
         log_string('No existing model, starting training from scratch...')

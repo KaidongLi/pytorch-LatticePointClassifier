@@ -189,6 +189,8 @@ def gen_attack_log(args):
         os.mkdir(DIR_LOG)
     if args.model == 'lattice_cls':
         logname = ('%s/ctri_%s_%s_%s_%s.csv'%(DIR_LOG, args.data, args.model, args.backbone, args.name))
+    elif args.model == 'graph_cls':
+        logname = ('%s/ctri_%s_%s_%s_%s.csv'%(DIR_LOG, args.data, args.model, args.backbone, args.name))
     else:
         logname = ('%s/ctri_%s_%s_%s.csv'%(DIR_LOG, args.data, args.model, args.name))
     
@@ -352,8 +354,17 @@ if __name__ == '__main__':
                         dnn_conf['robust_type'], 
                         dnn_conf['alpha']
                     )
+        model = model.to(device)   
+    elif args.model == 'graph_cls':
+        from utils import get_backbone
+        model = importlib.import_module('graph_cls').get_model(num_classes,
+            normal_channel=False,
+            backbone=get_backbone(args.backbone, num_classes, 3)
+        )
         model = model.to(device) 
         
+    # import pdb; pdb.set_trace()
+
     if args.model == 'dupnet':
         model.pnet_cls.load_state_dict(checkpoint['model_state_dict'])
         checkpoint_0 = '%s/pu-in_1024-up_4.pth'%DIR_LOG
@@ -361,6 +372,8 @@ if __name__ == '__main__':
     elif args.model == 'if_defense':
         model.pnet_cls.load_state_dict(checkpoint['model_state_dict'])
         model.convonet.load_state_dict(torch.load('%s/convonet.pth'%DIR_LOG))
+    elif args.model == 'graph_cls':
+        model.network_2d.load_state_dict(checkpoint['model_state_dict'])
     else:
         model.load_state_dict(checkpoint['model_state_dict'])
 
