@@ -105,6 +105,7 @@ class PartNormalDataset(Dataset):
         point_set[:, 0:3] = pc_normalize(point_set[:, 0:3])
 
         choice = np.random.choice(len(seg), self.npoints, replace=True)
+        # print(np.unique(seg))
         # resample
         point_set = point_set[choice, :]
         seg = seg[choice]
@@ -116,3 +117,13 @@ class PartNormalDataset(Dataset):
 
 
 
+if __name__ == '__main__':
+    import torch
+
+    TRAIN_DATASET = PartNormalDataset(npoints=2048, split='trainval')
+    trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=16,shuffle=True, num_workers=4)
+    
+    for point,label,target in trainDataLoader:
+        print(point.shape)
+        print(label.shape)
+        import pdb; pdb.set_trace()

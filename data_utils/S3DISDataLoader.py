@@ -22,6 +22,11 @@ class S3DISDataset(Dataset):
         for room_name in rooms_split:
             room_path = os.path.join(data_root, room_name)
             room_data = np.load(room_path)  # xyzrgbl, N*7
+
+            # kaidong test
+            # print(room_data.shape)
+
+
             points, labels = room_data[:, 0:6], room_data[:, 6]  # xyzrgb, N*6; l, N
             tmp, _ = np.histogram(labels, range(14))
             labelweights += tmp
@@ -40,6 +45,13 @@ class S3DISDataset(Dataset):
             room_idxs.extend([index] * int(round(sample_prob[index] * num_iter)))
         self.room_idxs = np.array(room_idxs)
         print("Totally {} samples in {} set.".format(len(self.room_idxs), split))
+
+        # kaidong test
+        # print(len(self.room_idxs))
+        # print(self.room_idxs[:10])
+        # print(len(self.room_points))
+        # print(self.room_points[:10])
+
 
     def __getitem__(self, idx):
         room_idx = self.room_idxs[idx]
@@ -167,8 +179,10 @@ class ScannetDatasetWholeScene():
         return len(self.scene_points_list)
 
 if __name__ == '__main__':
-    data_root = '/data/yxu/PointNonLocal/data/stanford_indoor3d/'
-    num_point, test_area, block_size, sample_rate = 4096, 5, 1.0, 0.01
+    data_root = '/scratch/kaidong/pytorch-pointnets/data/stanford_indoor3d/'
+    # data_root = '/data/yxu/PointNonLocal/data/stanford_indoor3d/'
+    num_point, test_area, block_size, sample_rate = 4096, 5, 1.0, 1.0
+    # num_point, test_area, block_size, sample_rate = 4096, 5, 1.0, 0.01
 
     point_data = S3DISDataset(split='train', data_root=data_root, num_point=num_point, test_area=test_area, block_size=block_size, sample_rate=sample_rate, transform=None)
     print('point data size:', point_data.__len__())
@@ -187,4 +201,5 @@ if __name__ == '__main__':
         end = time.time()
         for i, (input, target) in enumerate(train_loader):
             print('time: {}/{}--{}'.format(i+1, len(train_loader), time.time() - end))
+            import pdb; pdb.set_trace()
             end = time.time()

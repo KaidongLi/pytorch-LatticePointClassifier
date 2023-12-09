@@ -4,7 +4,8 @@ import torch.nn as nn
 cfg = {
     'A' : [64,     'M', 128,      'M', 256, 256,           'M', 512, 512,           'M', 512, 512,           'M'],
     'B' : [64, 64, 'M', 128, 128, 'M', 256, 256,           'M', 512, 512,           'M', 512, 512,           'M'],
-    'D' : [64, 64, 'M', 128, 128, 'M', 256, 256, 256,      'M', 512, 512, 512,      'M', 512, 512, 512,      'A'],
+    'D'   : [64, 64, 'M', 128, 128, 'M', 256, 256, 256,      'M', 512, 512, 512,      'M', 512, 512, 512,      'A'],
+    'DOG' : [64, 64, 'M', 128, 128, 'M', 256, 256, 256,      'M', 512, 512, 512,      'M', 512, 512, 512,      'M'],
     'E' : [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M']
 }
 
@@ -62,6 +63,9 @@ def vgg13_bn():
 
 def vgg16_bn(num_cls=100, c=3):
     return VGG(make_layers(cfg['D'], batch_norm=True, input_channel=c), num_class=num_cls)
+
+def vgg16_seg(num_cls=100, c=3):
+    return VGG(make_layers(cfg['DOG'], batch_norm=True, input_channel=c), num_class=num_cls)
 
 def vgg19_bn():
     return VGG(make_layers(cfg['E'], batch_norm=True))

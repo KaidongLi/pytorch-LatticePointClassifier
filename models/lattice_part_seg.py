@@ -9,7 +9,9 @@ from pointnet import STN3d #, PointNetEncoder #, feature_transform_reguliarzer
 
 import math
 
-from resnet import resnet50
+# from vgg import vgg16_bn
+# from resnet import resnet50
+from fcn import FCN32s_part
 
 
 class SparseSum(torch.autograd.Function):
@@ -52,18 +54,25 @@ sparse_sum = SparseSum.apply
 class get_model(nn.Module):
 
     # s is the final image scale
-    def __init__(self, k=40, normal_channel=True, backbone=resnet50(40), s=128*3):
+    def __init__(self, part_num=50, normal_channel=True,  
+                    # seg_net=vgg16_bn(40, 1),
+                    seg_net=FCN32s_part(
+                                50, backbone='vgg16', 
+                                pretrained_base=True
+                    ), 
+                    s=128*3
+                ):
         super(get_model, self).__init__()
 
 
         self.lat_transform = LatticeGen(s, normal_channel)
         self.size2d = s
-        self.network_2d = backbone
+        self.seg_model = seg_net
 
         self.normal_channel = normal_channel
 
 
-    def forward(self, x):
+    def forward(self, x, label):
         if self.normal_channel:
             vv = x[:, 3:]
             # vv = x[:, :3]
@@ -75,19 +84,34 @@ class get_model(nn.Module):
         # splatted_2d = torch.cat((splatted_2d, splatted_2d_2), 3).permute(0, 3, 1, 2).contiguous()
         splatted_2d = splatted_2d.permute(0, 3, 1, 2).contiguous()
 
-        import pdb; pdb.set_trace()
         # splatted_2d = x
         import datetime
         st = datetime.datetime.now().timestamp()
 
         # network takes [b, c, size, size]
-        outputs = self.network_2d(splatted_2d)
+        outputs = self.seg_model(splatted_2d, label)
+        img_seg = outputs[0].permute(0, 2, 3, 1)
+        coord = coord.permute(0, 2, 1)
+
+        # kai hack, need to figure our dense coordinates
+        coord[coord>=(self.size2d/D)] = self.size2d/D - 1
+
+        outputs = img_seg[torch.arange(B)[:, None], coord[...,0], coord[...,1]]
+        # rrr = img_seg[torch.arange(B)[:, None], coord[...,0], coord[...,1]]
+        # iii = img_seg[:3]
+        # ccc = coord[:3, :10]
+        # iii[ccc[...,0], ccc[...,1]]
 
 
 
 
 
-        return outputs, [outputs, _[1]]#[_[0].permute(0, 3, 1, 2), splatted_2d, _[1], st]
+        return outputs, [splatted_2d]#[_[0].permute(0, 3, 1, 2), splatted_2d, _[1], st]
+
+
+
+
+        # return outputs, [_[0], _[1]]#[_[0].permute(0, 3, 1, 2), splatted_2d, _[1], st]
 
 
 
@@ -244,13 +268,11 @@ class LatticeGen(nn.Module):
             splatted_2d[i] = torch.cuda.sparse.FloatTensor(coord[i], tmp[i],
                                   torch.Size([self.size2d, self.size2d, c])).to_dense()
             filter_2d[i] = splatted_2d[i, pts_pick[i, 0]::self.d1, pts_pick[i, 1]::self.d1][:self.size2d//self.d1, :self.size2d//self.d1]
-        
-        import pdb; pdb.set_trace()
 
-        # if not self.normal_channel:
-        #     # cutoff = filter_2d[filter_2d>0].mean() * 2
-        #     # filter_2d[filter_2d>cutoff] = cutoff
-        #     filter_2d[filter_2d>0] = 1.0
+        if not self.normal_channel:
+            # cutoff = filter_2d[filter_2d>0].mean() * 2
+            # filter_2d[filter_2d>cutoff] = cutoff
+            filter_2d[filter_2d>0] = 1.0
 
         return filter_2d
 
@@ -274,7 +296,6 @@ class LatticeGen(nn.Module):
             # convert to 2d image
             # coord [3, d * num_pts]: [d] + [d] + ... + [d]
             coord = keys[:, :d].view(batch_size, d, -1)
-            # import pdb; pdb.set_trace()
 
             coord, pts_pick = self.convert2Dcoord(coord, batch_size, num_pts)
 
@@ -289,7 +310,6 @@ class LatticeGen(nn.Module):
             filter_2d = self.get2D(coord, tmp, pts_pick, batch_size)
 
 
-            import pdb; pdb.set_trace()
 
             return filter_2d, None, [filter_2d, keys.view(batch_size, 3, -1)]
         # return filter_2d, filter_2d_2, [filter_2d]#[splatted_2d, keys.view(batch_size, 3, -1)]

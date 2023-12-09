@@ -60,6 +60,13 @@ class get_model(nn.Module):
         out_max = torch.max(out5, 2, keepdim=True)[0]
         out_max = out_max.view(-1, 2048)
 
+
+        import pdb; pdb.set_trace()
+
+        # out_max: B, 2048
+        # label: B, 1, num_cls
+
+
         out_max = torch.cat([out_max,label.squeeze(1)],1)
         expand = out_max.view(-1, 2048+16, 1).repeat(1, 1, N)
         concat = torch.cat([expand, out1, out2, out3, out4, out5], 1)
