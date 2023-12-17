@@ -89,6 +89,28 @@ def main(args):
         logger.info(str)
         # print(str)
 
+    # # clip test
+    # import clip
+    # from PIL import Image
+
+    # import pdb; pdb.set_trace()
+    # device = "cuda" if torch.cuda.is_available() else "cpu"
+    # model, preprocess = clip.load("ViT-B/32", device=device)
+    # # model, preprocess = clip.load("ViT-B/32", device=device)
+
+    # image = preprocess(Image.open("dump/CLIP.png")).unsqueeze(0).to(device)
+    # text = clip.tokenize(["a diagram", "a dog", "a cat"]).to(device)
+
+    # with torch.no_grad():
+    #     image_features = model.encode_image(image)
+    #     text_features = model.encode_text(text)
+        
+    #     logits_per_image, logits_per_text = model(image, text)
+    #     probs = logits_per_image.softmax(dim=-1).cpu().numpy()
+
+    # print("Label probs:", probs)  # prints: [[0.9927937  0.00421068 0.00299572]]
+
+
     '''HYPER PARAMETER'''
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
@@ -172,6 +194,14 @@ def main(args):
         classifier = MODEL.get_model(num_class,
             normal_channel=args.normal,
             backbone=get_backbone(args.backbone, num_class, 1), s=args.dim*3).cuda()
+    elif args.model == 'lattice_cls_foundation':
+        classifier = MODEL.get_model(num_class,
+            normal_channel=args.normal, s=args.dim*3,
+            backbone=args.backbone).cuda()
+    elif args.model == 'lattice_cls_prompted_foundation':
+        classifier = MODEL.get_model(num_class,
+            normal_channel=args.normal, s=args.dim*3,
+            backbone=args.backbone).cuda()
     elif args.model == 'pointnet_cls':
         classifier = MODEL.get_model(num_class,normal_channel=args.normal).cuda()
     elif args.model == 'lattice_cls_2ch':
@@ -196,6 +226,14 @@ def main(args):
         classifier = MODEL.get_model(num_class,
             normal_channel=args.normal,
             backbone=get_backbone(args.backbone, num_class, 1), s=args.dim).cuda()
+    elif args.model == 'project_cls_foundation':
+        classifier = MODEL.get_model(num_class,
+            normal_channel=args.normal, s=args.dim,
+            backbone=args.backbone).cuda()
+    elif args.model == 'project_cls_cat_foundation':
+        classifier = MODEL.get_model(num_class,
+            normal_channel=args.normal, s=args.dim,
+            backbone=get_backbone(args.backbone, num_class, 1)).cuda()
     # classifier = MODEL.get_model(num_class,
     #     normal_channel=args.normal,
     #     backbone=get_backbone(args.backbone, num_class, 1)).cuda()

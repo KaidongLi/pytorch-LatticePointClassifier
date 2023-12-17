@@ -129,7 +129,23 @@ def get_backbone(backbone, num_cls=100, c=1, use_gpu=True):
     elif backbone == 'resnext50':
         from models.resnext import resnext50
         net = resnext50(num_cls, c)
-
+    elif backbone == 'simple-vit':
+        from simple_vit import SimpleViT
+        # input image pixel: 256
+        net = SimpleViT(
+                    image_size = 256,
+                    patch_size = 32,
+                    num_classes = num_cls,
+                    dim = 1024,
+                    depth = 6,
+                    heads = 16,
+                    mlp_dim = 2048,
+                    channels = c
+                )
+    elif backbone == 'effi-cat-foundation':
+        from efficientnet_catf import EfficientNet
+        net = EfficientNet.from_pretrained('efficientnet-b5', advprop=True, num_classes=num_cls, in_channels=c)
+        # net = EfficientNet.from_name('efficientnet-b5', num_classes=num_cls, in_channels=1) #advprop=True,
     else:
         print('the network name you have entered is not supported yet')
         sys.exit()
