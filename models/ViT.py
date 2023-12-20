@@ -5,6 +5,87 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torchvision.transforms import Resize
+
+try:
+    from torchvision.transforms import InterpolationMode
+    BICUBIC = InterpolationMode.BICUBIC
+except ImportError:
+    BICUBIC = Image.BICUBIC
+    
+class get_model(nn.Module):
+
+    # s is the final image scale
+    def __init__(self, k=40, normal_channel=True, s=224):
+        super(get_model, self).__init__()
+        dim_feat = 768
+        self.resize = Resize(s, interpolation=BICUBIC)
+        self.vit_backbone = VisionTransformer(
+                                input_resolution=s,
+                                patch_size=14,
+                                width=1024,
+                                layers=24,
+                                heads=16,
+                                output_dim=dim_feat)
+        self.vit_backbone.load_state_dict(
+                    torch.load('checkpoints/foundation_clip_ViT-L14.pth')#, map_location ='cpu')
+                )
+
+        for param in self.vit_backbone.parameters():
+            param.requires_grad = False
+
+        # self.fc = nn.Linear(dim_feat, k)
+        self.fc =  nn.Sequential(
+                        nn.Linear(dim_feat, 4096),
+                        nn.ReLU(inplace=True),
+                        nn.Dropout(),
+                        nn.Linear(4096, 4096),
+                        nn.ReLU(inplace=True),
+                        nn.Dropout(),
+                        nn.Linear(4096, k)
+                    )
+
+
+    def forward(self, x):
+        outputs = self.vit_backbone(self.resize(x))
+        outputs = self.fc(outputs)
+
+        return outputs, [] #[_[0], _[1]]#[_[0].permute(0, 3, 1, 2), splatted_2d, _[1], st]
+
+
+
+# class get_adv_loss(torch.nn.Module):
+#     def __init__(self, num_class, mat_diff_loss_scale=0.001):
+#         super(get_adv_loss, self).__init__()
+#         self.mat_diff_loss_scale = mat_diff_loss_scale
+#         self.num_class = num_class
+
+#     def forward(self, pred, target, kappa=0):
+#         tlab = F.one_hot(target.squeeze(), self.num_class)
+
+#         # real: target class value
+#         real = torch.sum(tlab * pred, dim=1)
+#         # other: max value of the rest
+#         other = torch.max((1 - tlab) * pred - (tlab * 10000), dim=1)[0]
+
+#         loss1 = torch.maximum(torch.Tensor([0.]).cuda(), other - real + kappa)
+#         # import pdb; pdb.set_trace()
+#         return torch.mean(loss1)
+
+
+class get_loss(torch.nn.Module):
+    def __init__(self, mat_diff_loss_scale=0.001):
+        super(get_loss, self).__init__()
+        self.mat_diff_loss_scale = mat_diff_loss_scale
+
+    def forward(self, pred, target, trans_feat):
+        loss = F.nll_loss(pred, target)
+        mat_diff_loss = feature_transform_reguliarzer(trans_feat)
+
+        total_loss = loss + mat_diff_loss * self.mat_diff_loss_scale
+        return total_loss
+
+
 
 
 class Bottleneck(nn.Module):
